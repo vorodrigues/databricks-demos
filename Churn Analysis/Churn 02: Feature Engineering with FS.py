@@ -20,10 +20,10 @@
 # MAGIC   b.subscription_id,
 # MAGIC   b.subscription_start as start_at,
 # MAGIC   c.last_at
-# MAGIC FROM kkbox.train a  -- LIMIT ANALYSIS TO AT-RISK SUBSCRIBERS IN THE TRAINING PERIOD
+# MAGIC FROM vr_kkbox_silver.train a  -- LIMIT ANALYSIS TO AT-RISK SUBSCRIBERS IN THE TRAINING PERIOD
 # MAGIC LEFT OUTER JOIN (   -- subscriptions not yet churned heading into the period of interest
 # MAGIC   SELECT *
-# MAGIC   FROM kkbox.subscription_windows 
+# MAGIC   FROM vr_kkbox_silver.subscription_windows 
 # MAGIC   WHERE subscription_start < '2017-02-01' AND subscription_end > DATE_ADD('2017-02-01', -30)
 # MAGIC   )b
 # MAGIC   ON a.msno=b.msno
@@ -31,7 +31,7 @@
 # MAGIC   SELECT            -- last transaction date prior to the start of the at-risk period (we could also have just set this to the day prior to the start of the period of interest)
 # MAGIC     subscription_id,
 # MAGIC     MAX(transaction_date) as last_at
-# MAGIC   FROM kkbox.transactions_enhanced
+# MAGIC   FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC   WHERE transaction_date < '2017-02-01'
 # MAGIC   GROUP BY subscription_id
 # MAGIC   ) c
@@ -45,9 +45,9 @@
 
 # DBTITLE 1,Transaction Log Features for Training Period (Feb 2017)
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.train_trans_features;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_gold.train_trans_features;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.train_trans_features
+# MAGIC CREATE TABLE vr_kkbox_gold.train_trans_features
 # MAGIC USING DELTA
 # MAGIC AS
 # MAGIC   WITH transaction_window (  -- this is the query from above defined as a CTE
@@ -56,10 +56,10 @@
 # MAGIC       b.subscription_id,
 # MAGIC       b.subscription_start as start_at,
 # MAGIC       c.last_at
-# MAGIC     FROM kkbox.train a
+# MAGIC     FROM vr_kkbox_silver.train a
 # MAGIC     LEFT OUTER JOIN (
 # MAGIC       SELECT *
-# MAGIC       FROM kkbox.subscription_windows 
+# MAGIC       FROM vr_kkbox_silver.subscription_windows 
 # MAGIC       WHERE subscription_start < '2017-02-01' AND subscription_end > DATE_ADD('2017-02-01', -30)
 # MAGIC       )b
 # MAGIC       ON a.msno=b.msno
@@ -67,7 +67,7 @@
 # MAGIC       SELECT  
 # MAGIC         subscription_id,
 # MAGIC         MAX(transaction_date) as last_at
-# MAGIC       FROM kkbox.transactions_enhanced
+# MAGIC       FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC       WHERE transaction_date < '2017-02-01'
 # MAGIC       GROUP BY subscription_id
 # MAGIC       ) c
@@ -103,7 +103,7 @@
 # MAGIC     CASE WHEN e.bd < 10 THEN NULL WHEN e.bd > 70 THEN NULL ELSE e.bd END as bd,
 # MAGIC     CASE WHEN LOWER(e.gender)='female' THEN 0 WHEN LOWER(e.gender)='male' THEN 1 ELSE NULL END as gender,
 # MAGIC     e.registered_via  
-# MAGIC   FROM kkbox.transactions_enhanced a
+# MAGIC   FROM vr_kkbox_silver.transactions_enhanced a
 # MAGIC   INNER JOIN transaction_window b
 # MAGIC     ON a.subscription_id=b.subscription_id AND a.transaction_date = b.last_at
 # MAGIC   INNER JOIN (
@@ -113,7 +113,7 @@
 # MAGIC       SUM(CASE WHEN x.days_change_in_membership_expire_date > 0 THEN x.actual_amount_paid ELSE 0 END) as total_amount_paid,
 # MAGIC       SUM(CASE WHEN x.days_change_in_membership_expire_date > 0 THEN x.discount ELSE 0 END) as total_discount,
 # MAGIC       SUM(CASE WHEN x.days_change_in_membership_expire_date > 0 THEN 1 ELSE 0 END) as renewals
-# MAGIC     FROM kkbox.transactions_enhanced x
+# MAGIC     FROM vr_kkbox_silver.transactions_enhanced x
 # MAGIC     INNER JOIN transaction_window y
 # MAGIC       ON x.subscription_id=y.subscription_id AND x.transaction_date BETWEEN y.start_at AND y.last_at
 # MAGIC     GROUP BY x.subscription_id
@@ -123,15 +123,15 @@
 # MAGIC     SELECT  -- count of all unique subscriptions for each customer
 # MAGIC       msno,
 # MAGIC       COUNT(*) as total_subscription_count
-# MAGIC     FROM kkbox.subscription_windows
+# MAGIC     FROM vr_kkbox_silver.subscription_windows
 # MAGIC     WHERE subscription_start < '2017-02-01'
 # MAGIC     GROUP BY msno
 # MAGIC     ) d
 # MAGIC     ON a.msno=d.msno
-# MAGIC   LEFT OUTER JOIN kkbox.members e
+# MAGIC   LEFT OUTER JOIN vr_kkbox_bronze.members e
 # MAGIC     ON a.msno=e.msno;
 # MAGIC     
-# MAGIC SELECT * FROM kkbox.train_trans_features;
+# MAGIC SELECT * FROM vr_kkbox_gold.train_trans_features;
 
 # COMMAND ----------
 
@@ -141,9 +141,9 @@
 
 # DBTITLE 1,Transaction Log Features for Testing Period (Mar 2017)
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.test_trans_features;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_gold.test_trans_features;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.test_trans_features
+# MAGIC CREATE TABLE vr_kkbox_gold.test_trans_features
 # MAGIC USING DELTA
 # MAGIC AS
 # MAGIC   WITH transaction_window (
@@ -152,10 +152,10 @@
 # MAGIC       b.subscription_id,
 # MAGIC       b.subscription_start as start_at,
 # MAGIC       c.last_at
-# MAGIC     FROM kkbox.test a  -- LIMIT ANALYSIS TO AT-RISK SUBSCRIBERS IN THE TESTING PERIOD
+# MAGIC     FROM vr_kkbox_silver.test a  -- LIMIT ANALYSIS TO AT-RISK SUBSCRIBERS IN THE TESTING PERIOD
 # MAGIC     LEFT OUTER JOIN (  -- subscriptions not yet churned heading into the period of interest
 # MAGIC       SELECT *
-# MAGIC       FROM kkbox.subscription_windows 
+# MAGIC       FROM vr_kkbox_silver.subscription_windows 
 # MAGIC       WHERE subscription_start < '2017-03-01' AND subscription_end > DATE_ADD('2017-03-01', -30) 
 # MAGIC       )b
 # MAGIC       ON a.msno=b.msno
@@ -163,7 +163,7 @@
 # MAGIC       SELECT  
 # MAGIC         subscription_id,
 # MAGIC         MAX(transaction_date) as last_at
-# MAGIC       FROM kkbox.transactions_enhanced
+# MAGIC       FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC       WHERE transaction_date < '2017-03-01'
 # MAGIC       GROUP BY subscription_id
 # MAGIC       ) c
@@ -199,7 +199,7 @@
 # MAGIC     CASE WHEN e.bd < 10 THEN NULL WHEN e.bd > 70 THEN NULL ELSE e.bd END as bd,
 # MAGIC     CASE WHEN LOWER(e.gender)='female' THEN 0 WHEN LOWER(e.gender)='male' THEN 1 ELSE NULL END as gender,
 # MAGIC     e.registered_via  
-# MAGIC   FROM kkbox.transactions_enhanced a
+# MAGIC   FROM vr_kkbox_silver.transactions_enhanced a
 # MAGIC   INNER JOIN transaction_window b
 # MAGIC     ON a.subscription_id=b.subscription_id AND a.transaction_date = b.last_at
 # MAGIC   INNER JOIN (
@@ -209,7 +209,7 @@
 # MAGIC       SUM(CASE WHEN x.days_change_in_membership_expire_date > 0 THEN x.actual_amount_paid ELSE 0 END) as total_amount_paid,
 # MAGIC       SUM(CASE WHEN x.days_change_in_membership_expire_date > 0 THEN x.discount ELSE 0 END) as total_discount,
 # MAGIC       SUM(CASE WHEN x.days_change_in_membership_expire_date > 0 THEN 1 ELSE 0 END) as renewals
-# MAGIC     FROM kkbox.transactions_enhanced x
+# MAGIC     FROM vr_kkbox_silver.transactions_enhanced x
 # MAGIC     INNER JOIN transaction_window y
 # MAGIC       ON x.subscription_id=y.subscription_id AND x.transaction_date BETWEEN y.start_at AND y.last_at
 # MAGIC     GROUP BY x.subscription_id
@@ -219,15 +219,15 @@
 # MAGIC     SELECT
 # MAGIC       msno,
 # MAGIC       COUNT(*) as total_subscription_count
-# MAGIC     FROM kkbox.subscription_windows
+# MAGIC     FROM vr_kkbox_silver.subscription_windows
 # MAGIC     WHERE subscription_start < '2017-03-01'
 # MAGIC     GROUP BY msno
 # MAGIC     ) d
 # MAGIC     ON a.msno=d.msno
-# MAGIC   LEFT OUTER JOIN kkbox.members e
+# MAGIC   LEFT OUTER JOIN vr_kkbox_bronze.members e
 # MAGIC     ON a.msno=e.msno;
 # MAGIC     
-# MAGIC SELECT * FROM kkbox.test_trans_features;
+# MAGIC SELECT * FROM vr_kkbox_gold.test_trans_features;
 
 # COMMAND ----------
 
@@ -243,8 +243,8 @@
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT COUNT(*)
-# MAGIC FROM kkbox.train a
-# MAGIC LEFT OUTER JOIN kkbox.train_trans_features b
+# MAGIC FROM vr_kkbox_silver.train a
+# MAGIC LEFT OUTER JOIN vr_kkbox_gold.train_trans_features b
 # MAGIC   ON a.msno=b.msno
 # MAGIC WHERE b.msno IS NULL
 
@@ -254,8 +254,8 @@
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT COUNT(*)
-# MAGIC FROM kkbox.test a
-# MAGIC LEFT OUTER JOIN kkbox.test_trans_features b
+# MAGIC FROM vr_kkbox_silver.test a
+# MAGIC LEFT OUTER JOIN vr_kkbox_gold.test_trans_features b
 # MAGIC   ON a.msno=b.msno
 # MAGIC WHERE b.msno IS NULL
 
@@ -283,10 +283,10 @@
 # MAGIC     END as start_at,
 # MAGIC   DATE_ADD('2017-02-01', -1) as end_at,
 # MAGIC   c.last_at as last_exp_at
-# MAGIC FROM kkbox.train a  -- LIMIT ANALYSIS TO AT-RISK SUBSCRIBERS IN THE TRAINING PERIOD
+# MAGIC FROM vr_kkbox_silver.train a  -- LIMIT ANALYSIS TO AT-RISK SUBSCRIBERS IN THE TRAINING PERIOD
 # MAGIC LEFT OUTER JOIN (   -- subscriptions not yet churned heading into the period of interest 
 # MAGIC   SELECT *
-# MAGIC   FROM kkbox.subscription_windows 
+# MAGIC   FROM vr_kkbox_silver.subscription_windows 
 # MAGIC   WHERE subscription_start < '2017-02-01' AND subscription_end > DATE_ADD('2017-02-01', -30)
 # MAGIC   )b
 # MAGIC   ON a.msno=b.msno
@@ -298,11 +298,11 @@
 # MAGIC     SELECT  -- last subscription transaction before start of this period
 # MAGIC       subscription_id,
 # MAGIC       MAX(transaction_date) as transaction_date
-# MAGIC     FROM kkbox.transactions_enhanced
+# MAGIC     FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC     WHERE transaction_date < '2017-02-01'
 # MAGIC     GROUP BY subscription_id
 # MAGIC     ) x
-# MAGIC   INNER JOIN kkbox.transactions_enhanced y
+# MAGIC   INNER JOIN vr_kkbox_silver.transactions_enhanced y
 # MAGIC     ON x.subscription_id=y.subscription_id AND x.transaction_date=y.transaction_date
 # MAGIC   ) c
 # MAGIC   ON b.subscription_id=c.subscription_id  
@@ -326,10 +326,10 @@
 # MAGIC         END as start_at,
 # MAGIC       DATE_ADD('2017-02-01', -1) as end_at,
 # MAGIC       c.last_at as last_exp_at
-# MAGIC     FROM kkbox.train a
+# MAGIC     FROM vr_kkbox_silver.train a
 # MAGIC     LEFT OUTER JOIN (
 # MAGIC       SELECT *
-# MAGIC       FROM kkbox.subscription_windows 
+# MAGIC       FROM vr_kkbox_silver.subscription_windows 
 # MAGIC       WHERE subscription_start < '2017-02-01' AND subscription_end > DATE_ADD('2017-02-01', -30)
 # MAGIC       )b
 # MAGIC       ON a.msno=b.msno
@@ -341,7 +341,7 @@
 # MAGIC         SELECT  -- last subscription transaction before start of this period
 # MAGIC           subscription_id,
 # MAGIC           MAX(transaction_date) as transaction_date
-# MAGIC         FROM kkbox.transactions_enhanced
+# MAGIC         FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC         WHERE transaction_date < '2017-02-01'
 # MAGIC         GROUP BY subscription_id
 # MAGIC         ) x
@@ -361,7 +361,7 @@
 # MAGIC   COALESCE(c.num_uniq,0) as number_uniq,
 # MAGIC   COALESCE(c.num_total,0) as number_total
 # MAGIC FROM activity_window a
-# MAGIC INNER JOIN kkbox.dates b
+# MAGIC INNER JOIN vr_kkbox_silver.dates b
 # MAGIC   ON b.date BETWEEN a.start_at AND a.end_at
 # MAGIC LEFT OUTER JOIN (
 # MAGIC   SELECT
@@ -371,7 +371,7 @@
 # MAGIC     SUM(total_secs) as total_secs,
 # MAGIC     SUM(num_uniq) as num_uniq,
 # MAGIC     SUM(num_25+num_50+num_75+num_985+num_100) as num_total
-# MAGIC   FROM kkbox.user_logs
+# MAGIC   FROM vr_kkbox_bronze.user_logs
 # MAGIC   GROUP BY msno, date
 # MAGIC   ) c
 # MAGIC   ON a.msno=c.msno AND b.date=c.date
@@ -385,9 +385,9 @@
 
 # DBTITLE 1,User Activity Log Features for Training Period (Feb 2017)
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.train_act_features;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_gold.train_act_features;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.train_act_features
+# MAGIC CREATE TABLE vr_kkbox_gold.train_act_features
 # MAGIC USING DELTA 
 # MAGIC AS
 # MAGIC WITH activity_window (
@@ -400,10 +400,10 @@
 # MAGIC         END as start_at,
 # MAGIC       DATE_ADD('2017-02-01', -1) as end_at,
 # MAGIC       c.last_at as last_exp_at
-# MAGIC     FROM kkbox.train a
+# MAGIC     FROM vr_kkbox_silver.train a
 # MAGIC     LEFT OUTER JOIN (
 # MAGIC       SELECT *
-# MAGIC       FROM kkbox.subscription_windows 
+# MAGIC       FROM vr_kkbox_silver.subscription_windows 
 # MAGIC       WHERE subscription_start < '2017-02-01' AND subscription_end > DATE_ADD('2017-02-01', -30)
 # MAGIC       )b
 # MAGIC       ON a.msno=b.msno
@@ -415,11 +415,11 @@
 # MAGIC         SELECT  -- last subscription transaction before start of this period
 # MAGIC           subscription_id,
 # MAGIC           MAX(transaction_date) as transaction_date
-# MAGIC         FROM kkbox.transactions_enhanced
+# MAGIC         FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC         WHERE transaction_date < '2017-02-01'
 # MAGIC         GROUP BY subscription_id
 # MAGIC         ) x
-# MAGIC       INNER JOIN kkbox.transactions_enhanced y
+# MAGIC       INNER JOIN vr_kkbox_silver.transactions_enhanced y
 # MAGIC         ON x.subscription_id=y.subscription_id AND x.transaction_date=y.transaction_date
 # MAGIC       ) c
 # MAGIC       ON b.subscription_id=c.subscription_id  
@@ -436,7 +436,7 @@
 # MAGIC       COALESCE(c.num_uniq,0) as number_uniq,
 # MAGIC       COALESCE(c.num_total,0) as number_total
 # MAGIC     FROM activity_window a
-# MAGIC     INNER JOIN kkbox.dates b
+# MAGIC     INNER JOIN vr_kkbox_silver.dates b
 # MAGIC       ON b.date BETWEEN a.start_at AND a.end_at
 # MAGIC     LEFT OUTER JOIN (
 # MAGIC       SELECT
@@ -446,7 +446,7 @@
 # MAGIC         SUM(total_secs) as total_secs,
 # MAGIC         SUM(num_uniq) as num_uniq,
 # MAGIC         SUM(num_25+num_50+num_75+num_985+num_100) as num_total
-# MAGIC       FROM kkbox.user_logs
+# MAGIC       FROM vr_kkbox_bronze.user_logs
 # MAGIC       GROUP BY msno, date
 # MAGIC       ) c
 # MAGIC       ON a.msno=c.msno AND b.date=c.date
@@ -490,7 +490,7 @@
 # MAGIC ORDER BY msno;
 # MAGIC 
 # MAGIC SELECT *
-# MAGIC FROM kkbox.train_act_features;
+# MAGIC FROM vr_kkbox_gold.train_act_features;
 
 # COMMAND ----------
 
@@ -500,9 +500,9 @@
 
 # DBTITLE 1,User Activity Log Features for Testing Period (Mar 2017)
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.test_act_features;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_gold.test_act_features;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.test_act_features
+# MAGIC CREATE TABLE vr_kkbox_gold.test_act_features
 # MAGIC USING DELTA 
 # MAGIC AS
 # MAGIC WITH activity_window (
@@ -515,10 +515,10 @@
 # MAGIC         END as start_at,
 # MAGIC       DATE_ADD('2017-03-01', -1) as end_at,
 # MAGIC       c.last_at as last_exp_at
-# MAGIC     FROM kkbox.test a
+# MAGIC     FROM vr_kkbox_silver.test a
 # MAGIC     LEFT OUTER JOIN (
 # MAGIC       SELECT *
-# MAGIC       FROM kkbox.subscription_windows 
+# MAGIC       FROM vr_kkbox_silver.subscription_windows 
 # MAGIC       WHERE subscription_start < '2017-03-01' AND subscription_end > DATE_ADD('2017-03-01', -30)
 # MAGIC       )b
 # MAGIC       ON a.msno=b.msno
@@ -530,11 +530,11 @@
 # MAGIC         SELECT  -- last subscription transaction before start of this period
 # MAGIC           subscription_id,
 # MAGIC           MAX(transaction_date) as transaction_date
-# MAGIC         FROM kkbox.transactions_enhanced
+# MAGIC         FROM vr_kkbox_silver.transactions_enhanced
 # MAGIC         WHERE transaction_date < '2017-03-01'
 # MAGIC         GROUP BY subscription_id
 # MAGIC         ) x
-# MAGIC       INNER JOIN kkbox.transactions_enhanced y
+# MAGIC       INNER JOIN vr_kkbox_silver.transactions_enhanced y
 # MAGIC         ON x.subscription_id=y.subscription_id AND x.transaction_date=y.transaction_date
 # MAGIC       ) c
 # MAGIC       ON b.subscription_id=c.subscription_id  
@@ -551,7 +551,7 @@
 # MAGIC       COALESCE(c.num_uniq,0) as number_uniq,
 # MAGIC       COALESCE(c.num_total,0) as number_total
 # MAGIC     FROM activity_window a
-# MAGIC     INNER JOIN kkbox.dates b
+# MAGIC     INNER JOIN vr_kkbox_silver.dates b
 # MAGIC       ON b.date BETWEEN a.start_at AND a.end_at
 # MAGIC     LEFT OUTER JOIN (
 # MAGIC       SELECT
@@ -561,7 +561,7 @@
 # MAGIC         SUM(total_secs) as total_secs,
 # MAGIC         SUM(num_uniq) as num_uniq,
 # MAGIC         SUM(num_25+num_50+num_75+num_985+num_100) as num_total
-# MAGIC       FROM kkbox.user_logs
+# MAGIC       FROM vr_kkbox_bronze.user_logs
 # MAGIC       GROUP BY msno, date
 # MAGIC       ) c
 # MAGIC       ON a.msno=c.msno AND b.date=c.date
@@ -605,7 +605,7 @@
 # MAGIC ORDER BY msno;
 # MAGIC 
 # MAGIC SELECT *
-# MAGIC FROM kkbox.test_act_features;
+# MAGIC FROM vr_kkbox_gold.test_act_features;
 
 # COMMAND ----------
 
@@ -617,8 +617,8 @@
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT COUNT(*)
-# MAGIC FROM kkbox.train a
-# MAGIC LEFT OUTER JOIN kkbox.train_act_features b
+# MAGIC FROM vr_kkbox_silver.train a
+# MAGIC LEFT OUTER JOIN vr_kkbox_gold.train_act_features b
 # MAGIC   ON a.msno=b.msno
 # MAGIC WHERE b.msno IS NULL
 
@@ -628,8 +628,8 @@
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT COUNT(*)
-# MAGIC FROM kkbox.test a
-# MAGIC LEFT OUTER JOIN kkbox.test_act_features b
+# MAGIC FROM vr_kkbox_silver.test a
+# MAGIC LEFT OUTER JOIN vr_kkbox_gold.test_act_features b
 # MAGIC   ON a.msno=b.msno
 # MAGIC WHERE b.msno IS NULL
 
@@ -639,20 +639,39 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Create a Feature Store Client
 from databricks import feature_store
-
+from pyspark.sql.functions import lit
 fs = feature_store.FeatureStoreClient()
 
-fs.create_table(
-    name="kkbox.fs_act_features",
-    df=spark.table("kkbox.train_act_features"),
-    primary_keys=["msno"],
-    description="KKBox Account Features",
+# COMMAND ----------
+
+# DBTITLE 1,Create new Feature Tables
+fs.create_feature_table(
+    name="vr_kkbox_gold.fs_act_features",
+    features_df=spark.table("vr_kkbox_gold.train_act_features").withColumn("_part_", lit("train")),
+    keys=["msno","_part_"],
+    description="KKBox Account Features"
 )
 
-fs.create_table(
-    name="kkbox.fs_trans_features",
-    df=spark.table("kkbox.train_trans_features"),
-    primary_keys=["msno"],
-    description="KKBox Transaction Features",
+fs.create_feature_table(
+    name="vr_kkbox_gold.fs_trans_features",
+    features_df=spark.table("vr_kkbox_gold.train_trans_features").withColumn("_part_", lit("train")),
+    keys=["msno","_part_"],
+    description="KKBox Transaction Features"
+)
+
+# COMMAND ----------
+
+# DBTITLE 1,Update Feature Tables
+fs.write_table(
+    name="vr_kkbox_gold.fs_act_features",
+    df=spark.table("vr_kkbox_gold.test_act_features").withColumn("_part_", lit("test")),
+    mode="merge"
+)
+
+fs.write_table(
+    name="vr_kkbox_gold.fs_trans_features",
+    df=spark.table("vr_kkbox_gold.test_trans_features").withColumn("_part_", lit("test")),
+    mode="merge"
 )

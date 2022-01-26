@@ -36,97 +36,52 @@ import numpy as np
 # COMMAND ----------
 
 # DBTITLE 1,Retrieve Features & Labels
-# retrieve training dataset
-train = spark.sql('''
-  SELECT
-    a.*,
-    b.days_total,
-    b.days_with_session,
-    b.ratio_days_with_session_to_days,
-    b.days_after_exp,
-    b.days_after_exp_with_session,
-    b.ratio_days_after_exp_with_session_to_days_after_exp,
-    b.sessions_total,
-    b.ratio_sessions_total_to_days_total,
-    b.ratio_sessions_total_to_days_with_session,
-    b.sessions_total_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp_with_session,
-    b.seconds_total,
-    b.ratio_seconds_total_to_days_total,
-    b.ratio_seconds_total_to_days_with_session,
-    b.seconds_total_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp_with_session,
-    b.number_uniq,
-    b.ratio_number_uniq_to_days_total,
-    b.ratio_number_uniq_to_days_with_session,
-    b.number_uniq_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp_with_session,
-    b.number_total,
-    b.ratio_number_total_to_days_total,
-    b.ratio_number_total_to_days_with_session,
-    b.number_total_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp_with_session,
-    c.is_churn
-  FROM kkbox.train_trans_features a
-  INNER JOIN kkbox.train_act_features b
-    ON a.msno=b.msno
-  INNER JOIN kkbox.train c
-    ON a.msno=c.msno
-  ''').toPandas()
+from databricks import feature_store
+from databricks.feature_store import FeatureLookup
+from pyspark.sql.functions import lit
 
-# retrieve training dataset
-test = spark.sql('''
-  SELECT
-    a.*,
-    b.days_total,
-    b.days_with_session,
-    b.ratio_days_with_session_to_days,
-    b.days_after_exp,
-    b.days_after_exp_with_session,
-    b.ratio_days_after_exp_with_session_to_days_after_exp,
-    b.sessions_total,
-    b.ratio_sessions_total_to_days_total,
-    b.ratio_sessions_total_to_days_with_session,
-    b.sessions_total_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp_with_session,
-    b.seconds_total,
-    b.ratio_seconds_total_to_days_total,
-    b.ratio_seconds_total_to_days_with_session,
-    b.seconds_total_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp_with_session,
-    b.number_uniq,
-    b.ratio_number_uniq_to_days_total,
-    b.ratio_number_uniq_to_days_with_session,
-    b.number_uniq_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp_with_session,
-    b.number_total,
-    b.ratio_number_total_to_days_total,
-    b.ratio_number_total_to_days_with_session,
-    b.number_total_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp_with_session,
-    c.is_churn
-  FROM kkbox.test_trans_features a
-  INNER JOIN kkbox.test_act_features b
-    ON a.msno=b.msno
-  INNER JOIN kkbox.test c
-    ON a.msno=c.msno
-  ''').toPandas()
+fs = feature_store.FeatureStoreClient()
 
+feature_lookups = [
+    FeatureLookup(
+      table_name = 'vr_kkbox_gold.fs_act_features',
+      feature_names = None,
+      lookup_key = ['msno','_part_']
+    ),
+    FeatureLookup(
+      table_name = 'vr_kkbox_gold.fs_trans_features',
+      feature_names = None,
+      lookup_key = ['msno','_part_']
+    )
+]
 
+train = fs.create_training_set(
+  df=spark.table('vr_kkbox_silver.train').withColumn("_part_", lit("train")),
+  feature_lookups = feature_lookups,
+  label = 'is_churn',
+  exclude_columns = ['msno', '_part_','subscription_id']
+).load_df()
+
+test = fs.create_training_set(
+  df=spark.table('vr_kkbox_silver.test').withColumn("_part_", lit("test")),
+  feature_lookups = feature_lookups,
+  label = 'is_churn',
+  exclude_columns = ['msno', '_part_','subscription_id']
+).load_df()
+
+display(train)
+
+# COMMAND ----------
+
+# DBTITLE 1,Separate Features & Labels
 # separate features and labels
-X_train_raw = train.drop(['msno','is_churn'], axis=1)
+train = train.toPandas()
+X_train_raw = train.drop('is_churn', axis=1)
 y_train = train['is_churn']
 
 # separate features and labels
-X_test_raw = test.drop(['msno','is_churn'], axis=1)
+test = test.toPandas()
+X_test_raw = test.drop('is_churn', axis=1)
 y_test = test['is_churn']
 
 # COMMAND ----------

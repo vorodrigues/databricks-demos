@@ -3,12 +3,6 @@
 
 # COMMAND ----------
 
-# MAGIC %md ### Step 1: Load & Transform Data
-# MAGIC 
-# MAGIC To get started, we'll re-load our data, applying transformations to features to address issues related to missing data, categorical values & feature standardization.  This step is a repeat of work introduced and explained in the last notebook:
-
-# COMMAND ----------
-
 # DBTITLE 1,Import Needed Libraries
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
@@ -30,6 +24,7 @@ from hyperopt import hp, fmin, tpe, SparkTrials, STATUS_OK, space_eval
 import mlflow
 import mlflow.sklearn
 import mlflow.pyfunc
+from mlflow.models.signature import infer_signature
 
 import numpy as np
 
@@ -37,95 +32,61 @@ import time
 
 # COMMAND ----------
 
+# MAGIC %md ### Step 1: Load & Transform Data
+# MAGIC 
+# MAGIC To get started, we'll re-load our data, applying transformations to features to address issues related to missing data, categorical values & feature standardization.  This step is a repeat of work introduced and explained in the last notebook:
+
+# COMMAND ----------
+
 # DBTITLE 1,Load Features & Labels
-# retreive training & testing data
-train = spark.sql('''
-  SELECT
-    a.*,
-    b.days_total,
-    b.days_with_session,
-    b.ratio_days_with_session_to_days,
-    b.days_after_exp,
-    b.days_after_exp_with_session,
-    b.ratio_days_after_exp_with_session_to_days_after_exp,
-    b.sessions_total,
-    b.ratio_sessions_total_to_days_total,
-    b.ratio_sessions_total_to_days_with_session,
-    b.sessions_total_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp_with_session,
-    b.seconds_total,
-    b.ratio_seconds_total_to_days_total,
-    b.ratio_seconds_total_to_days_with_session,
-    b.seconds_total_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp_with_session,
-    b.number_uniq,
-    b.ratio_number_uniq_to_days_total,
-    b.ratio_number_uniq_to_days_with_session,
-    b.number_uniq_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp_with_session,
-    b.number_total,
-    b.ratio_number_total_to_days_total,
-    b.ratio_number_total_to_days_with_session,
-    b.number_total_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp_with_session,
-    c.is_churn
-  FROM kkbox.train_trans_features a
-  INNER JOIN kkbox.train_act_features b
-    ON a.msno=b.msno
-  INNER JOIN kkbox.train c
-    ON a.msno=c.msno
-  ''').toPandas()
+from databricks import feature_store
+from databricks.feature_store import FeatureLookup
+from pyspark.sql.functions import lit
 
-test = spark.sql('''
-  SELECT
-    a.*,
-    b.days_total,
-    b.days_with_session,
-    b.ratio_days_with_session_to_days,
-    b.days_after_exp,
-    b.days_after_exp_with_session,
-    b.ratio_days_after_exp_with_session_to_days_after_exp,
-    b.sessions_total,
-    b.ratio_sessions_total_to_days_total,
-    b.ratio_sessions_total_to_days_with_session,
-    b.sessions_total_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp,
-    b.ratio_sessions_total_after_exp_to_days_after_exp_with_session,
-    b.seconds_total,
-    b.ratio_seconds_total_to_days_total,
-    b.ratio_seconds_total_to_days_with_session,
-    b.seconds_total_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp,
-    b.ratio_seconds_total_after_exp_to_days_after_exp_with_session,
-    b.number_uniq,
-    b.ratio_number_uniq_to_days_total,
-    b.ratio_number_uniq_to_days_with_session,
-    b.number_uniq_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp,
-    b.ratio_number_uniq_after_exp_to_days_after_exp_with_session,
-    b.number_total,
-    b.ratio_number_total_to_days_total,
-    b.ratio_number_total_to_days_with_session,
-    b.number_total_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp,
-    b.ratio_number_total_after_exp_to_days_after_exp_with_session,
-    c.is_churn
-  FROM kkbox.test_trans_features a
-  INNER JOIN kkbox.test_act_features b
-    ON a.msno=b.msno
-  INNER JOIN kkbox.test c
-    ON a.msno=c.msno
-  ''').toPandas()
+fs = feature_store.FeatureStoreClient()
 
-# split into features and labels
-X_train_raw = train.drop(['msno','is_churn'], axis=1)
+feature_lookups = [
+    FeatureLookup(
+      table_name = 'vr_kkbox_gold.fs_act_features',
+      feature_names = None,
+      lookup_key = ['msno','_part_']
+    ),
+    FeatureLookup(
+      table_name = 'vr_kkbox_gold.fs_trans_features',
+      feature_names = None,
+      lookup_key = ['msno','_part_']
+    )
+]
+
+training_set = fs.create_training_set(
+  df=spark.table('vr_kkbox_silver.train').withColumn("_part_", lit("train")),
+  feature_lookups = feature_lookups,
+  label = 'is_churn',
+  exclude_columns = ['msno', '_part_','subscription_id']
+)
+train = training_set.load_df()
+
+testing_set = fs.create_training_set(
+  df=spark.table('vr_kkbox_silver.test').withColumn("_part_", lit("test")),
+  feature_lookups = feature_lookups,
+  label = 'is_churn',
+  exclude_columns = ['msno', '_part_','subscription_id']
+)
+test = testing_set.load_df()
+
+display(train)
+
+# COMMAND ----------
+
+# DBTITLE 1,Separate Features & Labels
+# separate features and labels
+train = train.toPandas()
+X_train_raw = train.drop('is_churn', axis=1)
 y_train = train['is_churn']
 
-X_test_raw = test.drop(['msno','is_churn'], axis=1)
+# separate features and labels
+test = test.toPandas()
+X_test_raw = test.drop('is_churn', axis=1)
 y_test = test['is_churn']
 
 # COMMAND ----------
@@ -155,7 +116,11 @@ X_test = transform.transform(X_test_raw)
 
 # COMMAND ----------
 
-# MAGIC %md ### Step 2: Tune Hyperparameters (XGBClassifier)
+# MAGIC %md ### Step 2: Tune XGBClassifier
+
+# COMMAND ----------
+
+# MAGIC %md #### Define Experiment
 # MAGIC 
 # MAGIC The XGBClassifier makes available a [wide variety of hyperparameters](https://xgboost.readthedocs.io/en/latest/python/python_api.html#xgboost.XGBClassifier) which can be used to tune model training.  Using some knowledge of our data and the algorithm, we might attempt to manually set some of the hyperparameters. But given the complexity of the interactions between them, it can be difficult to know exactly which combination of values will provide us the best model results.  It's in scenarios such as these that we might perform a series of model runs with different hyperparameter settings to observe how the model responds and arrive at an optimal combination of values.
 # MAGIC 
@@ -167,7 +132,7 @@ X_test = transform.transform(X_test_raw)
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Model Evaluation Function for Hyperopt
+# DBTITLE 0,Define Model Evaluation Function for Hyperopt
 def evaluate_model(hyperopt_params):
   
   # accesss replicated input data
@@ -219,11 +184,12 @@ y_test_broadcast = sc.broadcast(y_test)
 
 # COMMAND ----------
 
-# MAGIC %md The hyperparameter values delivered to the function by hyperopt are derived from a search space defined in the next cell.  Each hyperparameter in the search space is defined using an item in a dictionary, the name of which identifies the hyperparameter and the value of which defines a range of potential values for that parameter.  When defined using *hp.choice*, a parameter is selected from a predefined list of values.  When defined *hp.loguniform*, values are generated from a continuous range of values.  When defined using *hp.quniform*, values are generated from a continuous range but truncated to a level of precision identified by the third argument  in the range definition.  Hyperparameter search spaces in hyperopt may be defined in many other ways as indicated by the library's [online documentation](https://github.com/hyperopt/hyperopt/wiki/FMin#21-parameter-expressions):  
+# MAGIC %md #### Define Search Space
+# MAGIC The hyperparameter values delivered to the function by hyperopt are derived from a search space defined in the next cell.  Each hyperparameter in the search space is defined using an item in a dictionary, the name of which identifies the hyperparameter and the value of which defines a range of potential values for that parameter.  When defined using *hp.choice*, a parameter is selected from a predefined list of values.  When defined *hp.loguniform*, values are generated from a continuous range of values.  When defined using *hp.quniform*, values are generated from a continuous range but truncated to a level of precision identified by the third argument  in the range definition.  Hyperparameter search spaces in hyperopt may be defined in many other ways as indicated by the library's [online documentation](https://github.com/hyperopt/hyperopt/wiki/FMin#21-parameter-expressions):  
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Search Space
+# DBTITLE 0,Define Search Space
 # define minimum positive class scale factor (as shown in previous notebook)
 weights = compute_class_weight(
   'balanced', 
@@ -247,9 +213,9 @@ search_space = {
 
 # COMMAND ----------
 
-# MAGIC %md The remainder of the model evaluation function is fairly straightforward.  We simply train and evaluate our model and return our loss value, *i.e.* -1 * AP Score, as part of a dictionary interpretable by hyperopt.  Based on returned values, hyperopt will generate a new set of hyperparameter values from within the search space definition with which it will attempt to improve our metric. We will limit the number of hyperopt evaluations to 250 simply based on a few trail runs we performed (not shown).  The larger the potential search space and the degree to which the model (in combination with the training dataset) responds to different hyperparameter combinations determines how many iterations are required for hyperopt to arrive at locally optimal values.  You can examine the output of the hyperopt run to see how our loss metric slowly improves over the course of each of these evaluations:
+# MAGIC %md #### Run Experiment
 # MAGIC 
-# MAGIC **NOTE** The XGBClassifier is configured within the *evaluate_model* function to use **GPUs**. Make sure you are running this on a **GPU-based cluster**.
+# MAGIC The remainder of the model evaluation function is fairly straightforward.  We simply train and evaluate our model and return our loss value, *i.e.* -1 * AP Score, as part of a dictionary interpretable by hyperopt.  Based on returned values, hyperopt will generate a new set of hyperparameter values from within the search space definition with which it will attempt to improve our metric. We will limit the number of hyperopt evaluations to 250 simply based on a few trail runs we performed (not shown).  The larger the potential search space and the degree to which the model (in combination with the training dataset) responds to different hyperparameter combinations determines how many iterations are required for hyperopt to arrive at locally optimal values.  You can examine the output of the hyperopt run to see how our loss metric slowly improves over the course of each of these evaluations:
 
 # COMMAND ----------
 
@@ -259,7 +225,7 @@ with mlflow.start_run(run_name='XGBClassifer'):
     fn=evaluate_model,
     space=search_space,
     algo=tpe.suggest,  # algorithm controlling how hyperopt navigates the search space
-    max_evals=10,
+    max_evals=50,
     trials=SparkTrials(parallelism=3),
     verbose=True
     )
@@ -304,7 +270,11 @@ run_ids = []
 
 # COMMAND ----------
 
-# DBTITLE 1,Train XGBClassifier Model
+# MAGIC %md #### Log Best Model
+
+# COMMAND ----------
+
+# DBTITLE 0,Train XGBClassifier Model
 # train model with optimal settings 
 with mlflow.start_run(run_name='XGB Final Model') as run:
   
@@ -326,20 +296,23 @@ with mlflow.start_run(run_name='XGB Final Model') as run:
   # train
   model = XGBClassifier(**params)
   model.fit(X_train, y_train)
-  mlflow.sklearn.log_model(model, 'model')  # persist model with mlflow
   
   # predict
   y_prob = model.predict_proba(X_test)
   
   # score
   model_ap = average_precision_score(y_test, y_prob[:,1])
+  
+  # log model
+  signature = infer_signature(X_train_raw, y_prob)
+  mlflow.sklearn.log_model(model, 'model', signature=signature)
   mlflow.log_metric('avg precision', model_ap)
   
   print('Model logged under run_id "{0}" with AP score of {1:.5f}'.format(run_id, model_ap))
 
 # COMMAND ----------
 
-# MAGIC %md ### Step 3: Train HistGradientBoostingClassifier & MLPClassifer Models
+# MAGIC %md ### Step 3: Train HistGradientBoostingClassifier
 # MAGIC 
 # MAGIC Using the same techniques as shown in the last step (but omitted here for brevity), we've identified an optimal set of parameters for the training of the HistGradientBoostingClassifier model.  We can now perform a final training run for this model:
 
@@ -381,20 +354,25 @@ with mlflow.start_run(run_name='HGB Final Model') as run:
   # train
   model = HistGradientBoostingClassifier(loss='binary_crossentropy', max_iter=1000, **params)
   model.fit(X_train, y_train, sample_weight = sample_weights * sample_weights_factor)
-  mlflow.sklearn.log_model(model, 'model')
   
   # predict
   y_prob = model.predict_proba(X_test)
   
   # score
   model_ap = average_precision_score(y_test, y_prob[:,1])
+  
+  # log model
+  signature = infer_signature(X_train_raw, y_prob)
+  mlflow.sklearn.log_model(model, 'model', signature=signature)
   mlflow.log_metric('avg precision', model_ap)
   
   print('Model logged under run_id "{0}" with AP Score of {1:.5f}'.format(run_id, model_ap))
 
 # COMMAND ----------
 
-# MAGIC %md Having done the same for our neural network, we will train it now:
+# MAGIC %md ### Step 4: Train MLPClassifer
+# MAGIC 
+# MAGIC Using the same techniques as shown before (but omitted here for brevity), we've identified an optimal set of parameters for the training of the MLPClassifer model.  We can now perform a final training run for this model:
 
 # COMMAND ----------
 
@@ -433,20 +411,23 @@ with mlflow.start_run(run_name='MLP Final Model') as run:
   # train
   model = MLPClassifier(max_iter=10000, **params)
   model.fit(X_train, y_train)
-  mlflow.sklearn.log_model(model, 'model')
   
   # predict
   y_prob = model.predict_proba(X_test)
   
   # score
   model_ap = average_precision_score(y_test, y_prob[:,1])
+  
+  # log model
+  signature = infer_signature(X_train_raw, y_prob)
+  mlflow.sklearn.log_model(model, 'model', signature=signature)
   mlflow.log_metric('avg precision', model_ap)
   
   print('Model logged under run_id "{0}" with AP Score of {1:.5f}'.format(run_id, model_ap))
 
 # COMMAND ----------
 
-# MAGIC %md ### Step 4: Train Voting Classifier
+# MAGIC %md ### Step 5: Train Voting Classifier
 # MAGIC 
 # MAGIC We now have three optimized models, each of which has been persisted to mlflow. Using a voting ensemble, we might combine the predictions of these three models to produce a new prediction that's better than any one model on its own. To get us started, we'll need to retrieve the trained models from prior steps:
 
@@ -547,8 +528,8 @@ with mlflow.start_run(run_name='Voting: {0}'.format('weights')):
     fn=evaluate_model,
     space=search_space,
     algo=tpe.suggest,
-    max_evals=250,
-    trials=SparkTrials(parallelism=4),
+    max_evals=50,
+    trials=SparkTrials(parallelism=3),
     verbose=True
     )
   
@@ -616,7 +597,7 @@ with mlflow.start_run(run_name='Voting Final Model') as run:
 
 # COMMAND ----------
 
-# MAGIC %md ### Step 5: Persist Model Pipeline
+# MAGIC %md ### Step 6: Persist Model Pipeline
 # MAGIC 
 # MAGIC We now have an optimized model, trained and persisted.  However, it is built to expect pre-transformed data.  If we consider how we will use this model to make predictions for the business, it would be helpful to combine our data transformation steps, addressed at the top of this notebook, with our model so that untransformed feature data can be passed directly to it.  To tackle this, we'll take our ColumnTransformers defined earlier and our Voting Classifier model trained in the last step and combine them into a unified model pipeline:
 
@@ -679,10 +660,12 @@ with mlflow.start_run(run_name='Final Pipeline Model') as run:
   mlflow.log_metric('avg precision', model_ap)
   
   # persist the model with the custom wrapper
+  signature = infer_signature(X_train_raw, y_prob)
   wrappedModel = SklearnModelWrapper(model_pipeline)
   mlflow.pyfunc.log_model(
     artifact_path='model', 
-    python_model=wrappedModel
+    python_model=wrappedModel,
+    signature=signature
     )
   
 print('Model logged under run_id "{0}" with log loss of {1:.5f}'.format(run_id, model_ap))
@@ -693,7 +676,8 @@ print('Model logged under run_id "{0}" with log loss of {1:.5f}'.format(run_id, 
 
 # COMMAND ----------
 
-model_name = 'churn-ensemble'
+# DBTITLE 1,Register Model & Move to Production
+model_name = 'VR KKBox Churn Model'
 
 # archive any production model versions (from any previous runs of this notebook or manual workflow management)
 client = mlflow.tracking.MlflowClient()
@@ -710,7 +694,7 @@ for mv in client.search_model_versions("name='{0}'".format(model_name)):
 # register last deployed model with mlflow model registry
 mv = mlflow.register_model(
     'runs:/{0}/model'.format(run_id),
-    'churn-ensemble'
+    model_name
     )
 model_version = mv.version
 
@@ -727,3 +711,17 @@ client.transition_model_version_stage(
   version=model_version,
   stage='production'
   )      
+
+# COMMAND ----------
+
+# MAGIC %md #### Register Champion Model
+
+# COMMAND ----------
+
+fs.log_model(
+  SklearnModelWrapper(model_pipeline),
+  "model",
+  flavor=mlflow.pyfunc,
+  training_set=training_set,
+  registered_model_name=model_name
+)

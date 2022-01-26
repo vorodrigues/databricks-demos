@@ -46,18 +46,23 @@ skip_reload = False
 
 # DBTITLE 1,Create Database to Contain Tables
 # create database to house SQL tables
-_ = spark.sql('CREATE DATABASE IF NOT EXISTS kkbox')
+_ = spark.sql('CREATE DATABASE IF NOT EXISTS vr_kkbox_bronze')
+_ = spark.sql('CREATE DATABASE IF NOT EXISTS vr_kkbox_silver')
+_ = spark.sql('CREATE DATABASE IF NOT EXISTS vr_kkbox_gold')
 
 # COMMAND ----------
 
-# DBTITLE 1,Load Members Table
+# MAGIC %md #### Load Members
+
+# COMMAND ----------
+
 if not skip_reload:
   
   # delete the old table if needed
-  _ = spark.sql('DROP TABLE IF EXISTS kkbox.members')
+  _ = spark.sql('DROP TABLE IF EXISTS vr_kkbox_bronze.members')
 
   # drop any old delta lake files that might have been created
-  shutil.rmtree('/dbfs/FileStore/kkbox/silver/members', ignore_errors=True)
+  shutil.rmtree('/dbfs/FileStore/vr/kkbox/bronze/members', ignore_errors=True)
 
   # members dataset schema
   member_schema = StructType([
@@ -74,7 +79,7 @@ if not skip_reload:
     spark
       .read
       .csv(
-        '/FileStore/kkbox/members/members_v3.csv',
+        '/FileStore/vr/kkbox/landing/members/members_v3.csv',
         schema=member_schema,
         header=True,
         dateFormat='yyyyMMdd'
@@ -87,26 +92,30 @@ if not skip_reload:
       .write
       .format('delta')
       .mode('overwrite')
-      .save('/FileStore/kkbox/silver/members')
+      .save('/FileStore/vr/kkbox/bronze/members')
     )
 
     # create table object to make delta lake queriable
   _ = spark.sql('''
-      CREATE TABLE kkbox.members 
+      CREATE TABLE vr_kkbox_bronze.members 
       USING DELTA 
-      LOCATION '/FileStore/kkbox/silver/members'
+      LOCATION '/FileStore/vr/kkbox/bronze/members'
       ''')
 
 # COMMAND ----------
 
-# DBTITLE 1,Load Transactions Table
+# MAGIC %md #### Load Transactions
+
+# COMMAND ----------
+
+# DBTITLE 0,Load Transactions Table
 if not skip_reload:
   
 # delete the old database and tables if needed
-  _ = spark.sql('DROP TABLE IF EXISTS kkbox.transactions')
+  _ = spark.sql('DROP TABLE IF EXISTS vr_kkbox_bronze.transactions')
 
   # drop any old delta lake files that might have been created
-  shutil.rmtree('/dbfs/FileStore/kkbox/silver/transactions', ignore_errors=True)
+  shutil.rmtree('/dbfs/FileStore/vr/kkbox/bronze/transactions', ignore_errors=True)
 
   # transaction dataset schema
   transaction_schema = StructType([
@@ -126,7 +135,7 @@ if not skip_reload:
     spark
       .read
       .csv(
-        '/FileStore/kkbox/transactions',
+        '/FileStore/vr/kkbox/landing/transactions',
         schema=transaction_schema,
         header=True,
         dateFormat='yyyyMMdd'
@@ -139,25 +148,28 @@ if not skip_reload:
       .format('delta')
       .partitionBy('transaction_date')
       .mode('overwrite')
-      .save('/FileStore/kkbox/silver/transactions')
+      .save('/FileStore/vr/kkbox/bronze/transactions')
     )
 
     # create table object to make delta lake queriable
   _ = spark.sql('''
-      CREATE TABLE kkbox.transactions
+      CREATE TABLE vr_kkbox_bronze.transactions
       USING DELTA 
-      LOCATION '/FileStore/kkbox/silver/transactions'
+      LOCATION '/FileStore/vr/kkbox/bronze/transactions'
       ''')
 
 # COMMAND ----------
 
-# DBTITLE 1,Load User Logs Table
+# MAGIC %md #### Load User Logs
+
+# COMMAND ----------
+
 if not skip_reload:
   # delete the old table if needed
-  _ = spark.sql('DROP TABLE IF EXISTS kkbox.user_logs')
+  _ = spark.sql('DROP TABLE IF EXISTS vr_kkbox_bronze.user_logs')
 
   # drop any old delta lake files that might have been created
-  shutil.rmtree('/dbfs/FileStore/kkbox/silver/user_logs', ignore_errors=True)
+  shutil.rmtree('/dbfs/FileStore/vr/kkbox/bronze/user_logs', ignore_errors=True)
 
   # transaction dataset schema
   user_logs_schema = StructType([ 
@@ -177,7 +189,7 @@ if not skip_reload:
     spark
       .read
       .csv(
-        '/FileStore/kkbox/user_logs',
+        '/FileStore/vr/kkbox/landing/user_logs',
         schema=user_logs_schema,
         header=True,
         dateFormat='yyyyMMdd'
@@ -190,15 +202,184 @@ if not skip_reload:
       .format('delta')
       .partitionBy('date')
       .mode('overwrite')
-      .save('/FileStore/kkbox/silver/user_logs')
+      .save('/FileStore/vr/kkbox/bronze/user_logs')
     )
 
   # create table object to make delta lake queriable
   _ = spark.sql('''
-    CREATE TABLE IF NOT EXISTS kkbox.user_logs
+    CREATE TABLE IF NOT EXISTS vr_kkbox_bronze.user_logs
     USING DELTA 
-    LOCATION '/FileStore/kkbox/silver/user_logs'
+    LOCATION '/FileStore/vr/kkbox/bronze/user_logs'
     ''')
+
+# COMMAND ----------
+
+# MAGIC %md #### Constraints ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
+# MAGIC Let's create some constraints to avoid bad data to flow through our pipeline and to help us identify potential issues with our data.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC ALTER TABLE vr_kkbox_bronze.members CHANGE COLUMN msno SET NOT NULL;
+# MAGIC ALTER TABLE vr_kkbox_bronze.members ADD CONSTRAINT dateWithinRange CHECK (registration_init_time > '1900-01-01');
+
+# COMMAND ----------
+
+# MAGIC %md Let's try to insert data with `null` id.
+
+# COMMAND ----------
+
+# MAGIC %sql INSERT INTO vr_kkbox_bronze.members VALUES (null, 0, 0, 'female', 11, '2011-09-11')
+
+# COMMAND ----------
+
+# MAGIC %md Now, let's try to insert data with a date out of the defined range.
+
+# COMMAND ----------
+
+# MAGIC %sql INSERT INTO vr_kkbox_bronze.members VALUES ('Rb9UwLQTrxzBVwCB6+bCcSQWZ9JiNLC9dXtM1oEsZA8=', 0, 0, 'female', 11, '1800-09-11')
+
+# COMMAND ----------
+
+# MAGIC %md #### Schema Enforcement ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
+# MAGIC To show you how schema enforcement works, let's try to insert a record with a new column -- `is_churn` -- that doesn't match our existing Delta Lake table schema.
+
+# COMMAND ----------
+
+# MAGIC %sql INSERT INTO vr_kkbox_bronze.members SELECT *, 0 as is_churn FROM vr_kkbox_bronze.members LIMIT 1
+
+# COMMAND ----------
+
+# MAGIC %md **Schema enforcement helps keep our tables clean and tidy so that we can trust the data we have stored in Delta Lake.** The writes above were blocked because the schema of the new data did not match the schema of table (see the exception details). See more information about how it works [here](https://databricks.com/blog/2019/09/24/diving-into-delta-lake-schema-enforcement-evolution.html).
+
+# COMMAND ----------
+
+# MAGIC %md #### Schema Evolution ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
+# MAGIC If we ***want*** to update our Delta Lake table to match this data source's schema, we can do so using schema evolution. Simply enable the `autoMerge` option.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SET spark.databricks.delta.schema.autoMerge.enabled = True;
+# MAGIC INSERT INTO vr_kkbox_bronze.members SELECT *, 0 as is_churn FROM vr_kkbox_bronze.members LIMIT 10
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Full DML Support ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
+# MAGIC 
+# MAGIC Delta Lake brings ACID transactions and full DML support to data lakes: `DELETE`, `UPDATE`, `MERGE INTO`
+# MAGIC 
+# MAGIC >Parquet does **not** support these commands - they are unique to Delta Lake.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC With a legacy data pipeline, to insert or update a table, you must:
+# MAGIC 1. Identify the new rows to be inserted
+# MAGIC 2. Identify the rows that will be replaced (i.e. updated)
+# MAGIC 3. Identify all of the rows that are not impacted by the insert or update
+# MAGIC 4. Create a new temp based on all three insert statements
+# MAGIC 5. Delete the original table (and all of those associated files)
+# MAGIC 6. "Rename" the temp table back to the original table name
+# MAGIC 7. Drop the temp table
+# MAGIC 
+# MAGIC <img src="https://pages.databricks.com/rs/094-YMS-629/images/merge-into-legacy.gif" alt='Merge process' width=600/>
+# MAGIC 
+# MAGIC 
+# MAGIC #### INSERT or UPDATE with Delta Lake
+# MAGIC 
+# MAGIC 2-step process: 
+# MAGIC 1. Identify rows to insert or update
+# MAGIC 2. Use `MERGE`
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC MERGE INTO vr_kkbox_bronze.members AS l
+# MAGIC USING (SELECT * FROM vr_kkbox_bronze.members LIMIT 10) AS m
+# MAGIC ON l.msno = m.msno
+# MAGIC WHEN MATCHED THEN 
+# MAGIC   UPDATE SET *
+# MAGIC WHEN NOT MATCHED THEN
+# MAGIC   INSERT *
+
+# COMMAND ----------
+
+# MAGIC %md #### Time Travel ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
+
+# COMMAND ----------
+
+# MAGIC %md Delta Lake’s time travel capabilities simplify building data pipelines for use cases including:
+# MAGIC 
+# MAGIC * Auditing Data Changes
+# MAGIC * Reproducing experiments & reports
+# MAGIC * Rollbacks
+# MAGIC 
+# MAGIC As you write into a Delta table or directory, every operation is automatically versioned.
+# MAGIC 
+# MAGIC <img src="https://github.com/risan4841/img/blob/master/transactionallogs.png?raw=true" width=250/>
+# MAGIC 
+# MAGIC You can query snapshots of your tables by:
+# MAGIC 1. **Version number**, or
+# MAGIC 2. **Timestamp.**
+# MAGIC 
+# MAGIC using Python, Scala, and/or SQL syntax; for these examples we will use the SQL syntax.  
+# MAGIC 
+# MAGIC For more information, refer to the [docs](https://docs.delta.io/latest/delta-utility.html#history), or [Introducing Delta Time Travel for Large Scale Data Lakes](https://databricks.com/blog/2019/02/04/introducing-delta-time-travel-for-large-scale-data-lakes.html)
+
+# COMMAND ----------
+
+# MAGIC %md Review Delta Lake Table History for  Auditing & Governance
+# MAGIC 
+# MAGIC All the transactions for this table are stored within this table including the initial set of insertions, update, delete, merge, and inserts with schema modification
+
+# COMMAND ----------
+
+# MAGIC %sql DESCRIBE HISTORY vr_kkbox_bronze.members
+
+# COMMAND ----------
+
+# MAGIC %md Use time travel to count records both in the latest version of the data, as well as the initial version.
+# MAGIC 
+# MAGIC As you can see, 10 new records was added.
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC SELECT 'latest' as ver, count(*) as cnt FROM vr_kkbox_bronze.members
+# MAGIC UNION
+# MAGIC SELECT 'initial' as ver, count(*) as cnt FROM vr_kkbox_bronze.members VERSION AS OF 0
+
+# COMMAND ----------
+
+# MAGIC %md Rollback table to initial version using `RESTORE`
+
+# COMMAND ----------
+
+# MAGIC %sql RESTORE vr_kkbox_bronze.members VERSION AS OF 0
+
+# COMMAND ----------
+
+# MAGIC %md #### Optimize & Z-Ordering ![](https://pages.databricks.com/rs/094-YMS-629/images/dbsquare.png)
+# MAGIC 
+# MAGIC **`OPTIMIZE`** optimizes the layout of Delta Lake data by compacting small files into larger ones in order to greatly increase read performance.
+# MAGIC 
+# MAGIC **`ZORDER`** (multi-dimensional clustering) colocates column information along multiple dimensions in the same set of files. Co-locality is used by Delta Lake data-skipping algorithms to dramatically reduce the amount of data that needs to be read.
+
+# COMMAND ----------
+
+# MAGIC %sql OPTIMIZE vr_kkbox_bronze.members ZORDER BY registration_init_time, msno
+
+# COMMAND ----------
+
+# MAGIC %md #### Caching ![](https://pages.databricks.com/rs/094-YMS-629/images/dbsquare.png)
+# MAGIC 
+# MAGIC The Delta cache accelerates data reads by creating copies of remote files in nodes’ local storage using a fast intermediate data format. The data is cached automatically whenever a file has to be fetched from a remote location or a **`CACHE SELECT`** statement is run. Successive reads of the same data are then performed locally, which results in significantly improved reading speed.
+
+# COMMAND ----------
+
+# MAGIC %sql CACHE SELECT * FROM vr_kkbox_bronze.members
 
 # COMMAND ----------
 
@@ -213,9 +394,9 @@ if not skip_reload:
 # COMMAND ----------
 
 # DBTITLE 1,Delete Training Labels (if exists)
-_ = spark.sql('DROP TABLE IF EXISTS kkbox.train')
+_ = spark.sql('DROP TABLE IF EXISTS vr_kkbox_silver.train')
 
-shutil.rmtree('/dbfs/FileStore/kkbox/silver/train', ignore_errors=True)
+shutil.rmtree('/dbfs/FileStore/vr/kkbox/silver/train', ignore_errors=True)
 
 # COMMAND ----------
 
@@ -325,7 +506,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/train', ignore_errors=True)
 # MAGIC val data = spark
 # MAGIC   .read
 # MAGIC   .option("header", value = true)
-# MAGIC   .csv("/FileStore/kkbox/transactions/")
+# MAGIC   .csv("/FileStore/vr/kkbox/landing/transactions/")
 # MAGIC 
 # MAGIC val historyCutoff = "20170131"
 # MAGIC 
@@ -400,26 +581,26 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/train', ignore_errors=True)
 # MAGIC       )
 # MAGIC   )
 # MAGIC 
-# MAGIC resultSet.write.format("delta").mode("overwrite").save("/FileStore/kkbox/silver/train/")
+# MAGIC resultSet.write.format("delta").mode("overwrite").save("/FileStore/vr/kkbox/silver/train/")
 
 # COMMAND ----------
 
 # DBTITLE 1,Access Training Labels
 # MAGIC %sql
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.train
+# MAGIC CREATE TABLE vr_kkbox_silver.train
 # MAGIC USING DELTA
-# MAGIC LOCATION '/FileStore/kkbox/silver/train/';
+# MAGIC LOCATION '/FileStore/vr/kkbox/silver/train/';
 # MAGIC 
 # MAGIC SELECT *
-# MAGIC FROM kkbox.train;
+# MAGIC FROM vr_kkbox_silver.train;
 
 # COMMAND ----------
 
 # DBTITLE 1,Delete Testing Labels (if exists)
-_ = spark.sql('DROP TABLE IF EXISTS kkbox.test')
+_ = spark.sql('DROP TABLE IF EXISTS vr_kkbox_silver.test')
 
-shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
+shutil.rmtree('/dbfs/FileStore/vr/kkbox/silver/test', ignore_errors=True)
 
 # COMMAND ----------
 
@@ -529,7 +710,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC val data = spark
 # MAGIC   .read
 # MAGIC   .option("header", value = true)
-# MAGIC   .csv("/FileStore/kkbox/transactions/")
+# MAGIC   .csv("/FileStore/vr/kkbox/landing/transactions/")
 # MAGIC 
 # MAGIC val historyCutoff = "20170228"
 # MAGIC 
@@ -604,19 +785,19 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC       )
 # MAGIC   )
 # MAGIC 
-# MAGIC resultSet.write.format("delta").mode("overwrite").save("/FileStore/kkbox/silver/test/")
+# MAGIC resultSet.write.format("delta").mode("overwrite").save("/FileStore/vr/kkbox/silver/test/")
 
 # COMMAND ----------
 
 # DBTITLE 1,Access Testing Labels
 # MAGIC %sql
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.test
+# MAGIC CREATE TABLE vr_kkbox_silver.test
 # MAGIC USING DELTA
-# MAGIC LOCATION '/FileStore/kkbox/silver/test/';
+# MAGIC LOCATION '/FileStore/vr/kkbox/silver/test/';
 # MAGIC 
 # MAGIC SELECT *
-# MAGIC FROM kkbox.test;
+# MAGIC FROM vr_kkbox_silver.test;
 
 # COMMAND ----------
 
@@ -634,9 +815,9 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.transactions_clean;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_silver.transactions_clean;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.transactions_clean
+# MAGIC CREATE TABLE vr_kkbox_silver.transactions_clean
 # MAGIC USING DELTA
 # MAGIC AS
 # MAGIC   WITH 
@@ -660,7 +841,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC           CONCAT(CAST(plan_list_price as string), CAST(payment_plan_days as string), CAST(payment_method_id as string)) as plan_sort,
 # MAGIC           is_cancel,
 # MAGIC           membership_expire_date
-# MAGIC         FROM kkbox.transactions
+# MAGIC         FROM vr_kkbox_bronze.transactions
 # MAGIC         )
 # MAGIC       )
 # MAGIC   SELECT
@@ -674,7 +855,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC     p.is_cancel,
 # MAGIC     p.is_auto_renew,
 # MAGIC     p.membership_expire_date
-# MAGIC   FROM kkbox.transactions p
+# MAGIC   FROM vr_kkbox_bronze.transactions p
 # MAGIC   INNER JOIN (
 # MAGIC     SELECT
 # MAGIC       x.msno,
@@ -722,7 +903,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC      p.membership_expire_date=q.membership_expire_date;
 # MAGIC      
 # MAGIC SELECT * 
-# MAGIC FROM kkbox.transactions_clean
+# MAGIC FROM vr_kkbox_silver.transactions_clean
 # MAGIC ORDER BY msno, transaction_date;
 
 # COMMAND ----------
@@ -732,9 +913,9 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.subscription_windows;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_silver.subscription_windows;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.subscription_windows 
+# MAGIC CREATE TABLE vr_kkbox_silver.subscription_windows 
 # MAGIC USING delta
 # MAGIC AS
 # MAGIC   WITH end_dates (
@@ -764,7 +945,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC               ELSE x.membership_expire_date
 # MAGIC               END as membership_expire_date,
 # MAGIC             LEAD(x.transaction_date, 1) OVER (PARTITION BY x.msno ORDER BY x.transaction_date) as next_transaction_date
-# MAGIC           FROM kkbox.transactions_clean x
+# MAGIC           FROM vr_kkbox_silver.transactions_clean x
 # MAGIC           ) m
 # MAGIC         ) p
 # MAGIC       WHERE p.end_flag=1
@@ -779,7 +960,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC       x.msno,
 # MAGIC       MIN(x.transaction_date) as subscription_start,
 # MAGIC       y.window_end as subscription_end
-# MAGIC     FROM kkbox.transactions_clean x
+# MAGIC     FROM vr_kkbox_silver.transactions_clean x
 # MAGIC     INNER JOIN (
 # MAGIC       SELECT
 # MAGIC         a.msno,
@@ -796,7 +977,7 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC   ORDER BY subscription_id;
 # MAGIC   
 # MAGIC SELECT *
-# MAGIC FROM kkbox.subscription_windows
+# MAGIC FROM vr_kkbox_silver.subscription_windows
 # MAGIC ORDER BY subscription_id;
 
 # COMMAND ----------
@@ -816,12 +997,12 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC 
 # MAGIC SELECT
 # MAGIC   x.msno
-# MAGIC FROM kkbox.train x
+# MAGIC FROM vr_kkbox_silver.train x
 # MAGIC LEFT OUTER JOIN (
 # MAGIC   SELECT DISTINCT -- subscriptions that had risk in Feb 2017
 # MAGIC     a.msno
-# MAGIC   FROM kkbox.subscription_windows a
-# MAGIC   INNER JOIN kkbox.transactions_clean b
+# MAGIC   FROM vr_kkbox_silver.subscription_windows a
+# MAGIC   INNER JOIN vr_kkbox_silver.transactions_clean b
 # MAGIC     ON a.msno=b.msno AND b.transaction_date BETWEEN a.subscription_start AND a.subscription_end
 # MAGIC   WHERE 
 # MAGIC         a.subscription_start < '2017-02-01' AND
@@ -837,12 +1018,12 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC 
 # MAGIC SELECT
 # MAGIC   x.msno
-# MAGIC FROM kkbox.test x
+# MAGIC FROM vr_kkbox_silver.test x
 # MAGIC LEFT OUTER JOIN (
 # MAGIC   SELECT DISTINCT -- subscriptions that had risk in Feb 2017
 # MAGIC     a.msno
-# MAGIC   FROM kkbox.subscription_windows a
-# MAGIC   INNER JOIN kkbox.transactions_clean b
+# MAGIC   FROM vr_kkbox_silver.subscription_windows a
+# MAGIC   INNER JOIN vr_kkbox_silver.transactions_clean b
 # MAGIC     ON a.msno=b.msno AND b.transaction_date BETWEEN a.subscription_start AND a.subscription_end
 # MAGIC   WHERE 
 # MAGIC         a.subscription_start < '2017-03-01' AND
@@ -860,9 +1041,9 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS kkbox.transactions_enhanced;
+# MAGIC DROP TABLE IF EXISTS vr_kkbox_silver.transactions_enhanced;
 # MAGIC 
-# MAGIC CREATE TABLE kkbox.transactions_enhanced
+# MAGIC CREATE TABLE vr_kkbox_silver.transactions_enhanced
 # MAGIC USING DELTA
 # MAGIC AS
 # MAGIC   SELECT
@@ -886,15 +1067,15 @@ shutil.rmtree('/dbfs/FileStore/kkbox/silver/test', ignore_errors=True)
 # MAGIC       END as change_in_auto_renew,
 # MAGIC     COALESCE( DATEDIFF(a.membership_expire_date, LAG(a.membership_expire_date, 1) OVER(PARTITION BY b.subscription_id ORDER BY a.transaction_date)), 0) as days_change_in_membership_expire_date
 # MAGIC 
-# MAGIC   FROM kkbox.transactions_clean a
-# MAGIC   INNER JOIN kkbox.subscription_windows b
+# MAGIC   FROM vr_kkbox_silver.transactions_clean a
+# MAGIC   INNER JOIN vr_kkbox_silver.subscription_windows b
 # MAGIC     ON a.msno=b.msno AND 
 # MAGIC        a.transaction_date BETWEEN b.subscription_start AND b.subscription_end
 # MAGIC   ORDER BY 
 # MAGIC     a.msno,
 # MAGIC     a.transaction_date;
 # MAGIC     
-# MAGIC SELECT * FROM kkbox.transactions_enhanced;
+# MAGIC SELECT * FROM vr_kkbox_silver.transactions_enhanced;
 
 # COMMAND ----------
 
@@ -918,8 +1099,8 @@ days = end_date - start_date
   )
 
 # persist data to SQL table
-_ = spark.sql('DROP TABLE IF EXISTS kkbox.dates') 
-_ = spark.sql('CREATE TABLE kkbox.dates USING DELTA AS SELECT * FROM dates')
+_ = spark.sql('DROP TABLE IF EXISTS vr_kkbox_silver.dates') 
+_ = spark.sql('CREATE TABLE vr_kkbox_silver.dates USING DELTA AS SELECT * FROM dates')
 
 # display SQL table content
-display(spark.table('kkbox.dates').orderBy('date'))
+display(spark.table('vr_kkbox_silver.dates').orderBy('date'))
