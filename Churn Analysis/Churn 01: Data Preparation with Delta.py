@@ -219,9 +219,9 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC ALTER TABLE vr_kkbox_bronze.members CHANGE COLUMN msno SET NOT NULL;
-# MAGIC ALTER TABLE vr_kkbox_bronze.members ADD CONSTRAINT dateWithinRange CHECK (registration_init_time > '1900-01-01');
+#%sql
+#ALTER TABLE vr_kkbox_bronze.members CHANGE COLUMN msno SET NOT NULL;
+#ALTER TABLE vr_kkbox_bronze.members ADD CONSTRAINT dateWithinRange CHECK (registration_init_time > '1900-01-01');
 
 # COMMAND ----------
 
@@ -229,7 +229,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql INSERT INTO vr_kkbox_bronze.members VALUES (null, 0, 0, 'female', 11, '2011-09-11')
+#%sql INSERT INTO vr_kkbox_bronze.members VALUES (null, 0, 0, 'female', 11, '2011-09-11')
 
 # COMMAND ----------
 
@@ -237,7 +237,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql INSERT INTO vr_kkbox_bronze.members VALUES ('Rb9UwLQTrxzBVwCB6+bCcSQWZ9JiNLC9dXtM1oEsZA8=', 0, 0, 'female', 11, '1800-09-11')
+#%sql INSERT INTO vr_kkbox_bronze.members VALUES ('Rb9UwLQTrxzBVwCB6+bCcSQWZ9JiNLC9dXtM1oEsZA8=', 0, 0, 'female', 11, '1800-09-11')
 
 # COMMAND ----------
 
@@ -246,7 +246,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql INSERT INTO vr_kkbox_bronze.members SELECT *, 0 as is_churn FROM vr_kkbox_bronze.members LIMIT 1
+#%sql INSERT INTO vr_kkbox_bronze.members SELECT *, 0 as is_churn FROM vr_kkbox_bronze.members LIMIT 1
 
 # COMMAND ----------
 
@@ -259,9 +259,9 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SET spark.databricks.delta.schema.autoMerge.enabled = True;
-# MAGIC INSERT INTO vr_kkbox_bronze.members SELECT *, 0 as is_churn FROM vr_kkbox_bronze.members LIMIT 10
+#%sql
+#SET spark.databricks.delta.schema.autoMerge.enabled = True;
+#INSERT INTO vr_kkbox_bronze.members SELECT *, 0 as is_churn FROM vr_kkbox_bronze.members LIMIT 10
 
 # COMMAND ----------
 
@@ -295,14 +295,14 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC MERGE INTO vr_kkbox_bronze.members AS l
-# MAGIC USING (SELECT * FROM vr_kkbox_bronze.members LIMIT 10) AS m
-# MAGIC ON l.msno = m.msno
-# MAGIC WHEN MATCHED THEN 
-# MAGIC   UPDATE SET *
-# MAGIC WHEN NOT MATCHED THEN
-# MAGIC   INSERT *
+#%sql
+#MERGE INTO vr_kkbox_bronze.members AS l
+#USING (SELECT * FROM vr_kkbox_bronze.members LIMIT 10) AS m
+#ON l.msno = m.msno
+#WHEN MATCHED THEN 
+#  UPDATE SET *
+#WHEN NOT MATCHED THEN
+#  INSERT *
 
 # COMMAND ----------
 
@@ -336,7 +336,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql DESCRIBE HISTORY vr_kkbox_bronze.members
+#%sql DESCRIBE HISTORY vr_kkbox_bronze.members
 
 # COMMAND ----------
 
@@ -346,10 +346,10 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql 
-# MAGIC SELECT 'latest' as ver, count(*) as cnt FROM vr_kkbox_bronze.members
-# MAGIC UNION
-# MAGIC SELECT 'initial' as ver, count(*) as cnt FROM vr_kkbox_bronze.members VERSION AS OF 0
+#%sql 
+#SELECT 'latest' as ver, count(*) as cnt FROM vr_kkbox_bronze.members
+#UNION
+#SELECT 'initial' as ver, count(*) as cnt FROM vr_kkbox_bronze.members VERSION AS OF 0
 
 # COMMAND ----------
 
@@ -357,7 +357,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql RESTORE vr_kkbox_bronze.members VERSION AS OF 0
+#%sql RESTORE vr_kkbox_bronze.members VERSION AS OF 0
 
 # COMMAND ----------
 
@@ -369,7 +369,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql OPTIMIZE vr_kkbox_bronze.members ZORDER BY registration_init_time, msno
+#%sql OPTIMIZE vr_kkbox_bronze.members ZORDER BY registration_init_time, msno
 
 # COMMAND ----------
 
@@ -379,7 +379,7 @@ if not skip_reload:
 
 # COMMAND ----------
 
-# MAGIC %sql CACHE SELECT * FROM vr_kkbox_bronze.members
+#%sql CACHE SELECT * FROM vr_kkbox_bronze.members
 
 # COMMAND ----------
 
