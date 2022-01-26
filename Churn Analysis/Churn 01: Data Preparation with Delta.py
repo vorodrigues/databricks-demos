@@ -40,7 +40,7 @@ from pyspark.sql.functions import lit
 # this has been added for scenarios where you might
 # wish to alter some of the churn label prediction
 # logic but do not wish to rerun the whole notebook
-skip_reload = False
+skip_reload = True
 
 # COMMAND ----------
 
