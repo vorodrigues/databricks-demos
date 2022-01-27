@@ -677,44 +677,68 @@ print('Model logged under run_id "{0}" with log loss of {1:.5f}'.format(run_id, 
 # COMMAND ----------
 
 # DBTITLE 1,Register Model & Move to Production
-model_name = 'VR KKBox Churn Model'
-
-# archive any production model versions (from any previous runs of this notebook or manual workflow management)
-client = mlflow.tracking.MlflowClient()
-for mv in client.search_model_versions("name='{0}'".format(model_name)):
-    # if model with this name is marked production
-    if mv.current_stage.lower() == 'production':
-      # mark is as archived
-      client.transition_model_version_stage(
-        name=mv.name,
-        version=mv.version,
-        stage='archived'
-        )
-      
-# register last deployed model with mlflow model registry
-mv = mlflow.register_model(
-    'runs:/{0}/model'.format(run_id),
-    model_name
-    )
-model_version = mv.version
-
-# wait until newly registered model moves from PENDING_REGISTRATION to READY status
-while mv.status == 'PENDING_REGISTRATION':
-  time.sleep(5)
-  for mv in client.search_model_versions("run_id='{0}'".format(run_id)):  # new search functionality in mlflow 1.10 will make easier
-    if mv.version == model_version:
-      break
-      
-# transition newly deployed model to production stage
-client.transition_model_version_stage(
-  name=model_name,
-  version=model_version,
-  stage='production'
-  )      
+#model_name = 'VR KKBox Churn Model'
+#
+## archive any production model versions (from any previous runs of this notebook or manual workflow management)
+#client = mlflow.tracking.MlflowClient()
+#for mv in client.search_model_versions("name='{0}'".format(model_name)):
+#    # if model with this name is marked production
+#    if mv.current_stage.lower() == 'production':
+#      # mark is as archived
+#      client.transition_model_version_stage(
+#        name=mv.name,
+#        version=mv.version,
+#        stage='archived'
+#        )
+#      
+## register last deployed model with mlflow model registry
+#mv = mlflow.register_model(
+#    'runs:/{0}/model'.format(run_id),
+#    model_name
+#    )
+#model_version = mv.version
+#
+## wait until newly registered model moves from PENDING_REGISTRATION to READY status
+#while mv.status == 'PENDING_REGISTRATION':
+#  time.sleep(5)
+#  for mv in client.search_model_versions("run_id='{0}'".format(run_id)):  # new search functionality in mlflow 1.10 will make easier
+#    if mv.version == model_version:
+#      break
+#      
+## transition newly deployed model to production stage
+#client.transition_model_version_stage(
+#  name=model_name,
+#  version=model_version,
+#  stage='production'
+#  )      
 
 # COMMAND ----------
 
 # MAGIC %md #### Register Champion Model
+
+# COMMAND ----------
+
+model_name = 'VR KKBox Churn Model'
+
+# COMMAND ----------
+
+fs.log_model(
+  SklearnModelWrapper(model_pipeline),
+  "model",
+  flavor=mlflow.pyfunc,
+  training_set=training_set,
+  registered_model_name=model_name
+)
+
+# COMMAND ----------
+
+fs.log_model(
+  SklearnModelWrapper(model_pipeline),
+  "model",
+  flavor=mlflow.pyfunc,
+  training_set=training_set,
+  registered_model_name=model_name
+)
 
 # COMMAND ----------
 
