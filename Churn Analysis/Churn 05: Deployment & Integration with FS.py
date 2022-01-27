@@ -15,11 +15,11 @@ fs = feature_store.FeatureStoreClient()
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Predictions
+# DBTITLE 1,Generate Predictions with Production Model
 model_name = 'VR KKBox Churn Model'
 
 preds = fs.score_batch(
-    'models:/%s/Staging' % model_name,
+    'models:/%s/Production' % model_name,
     spark.table('vr_kkbox_silver.train').drop('is_churn').withColumn("_part_", lit("train"))
 )['msno','prediction']
 
