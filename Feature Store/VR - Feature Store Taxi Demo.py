@@ -1,6 +1,10 @@
 # Databricks notebook source
 # dbutils.widgets.text('db', 'vr_taxi_fs')
 # dbutils.widgets.text('model_name', 'VR Taxi Fare')
+# dbutils.widgets.text('hostname', '')
+# dbutils.widgets.text('port', '')
+# dbutils.widgets.text('user', '')
+# dbutils.widgets.text('password', '')
 
 # COMMAND ----------
 
@@ -590,19 +594,16 @@ display(with_predictions_reordered)
 
 # COMMAND ----------
 
-# DBTITLE 1,Run but do not Show
-hostname = 'oneenvsql.database.windows.net'
-port = 1433
-user = 'oneenvadmin'
-password = '0n3env4d#in'
+hostname = dbutils.widgets.get('hostname')
+port = dbutils.widgets.get('port')
+user = dbutils.widgets.get('user')
+password = dbutils.widgets.get('password')
 osdb = 'oneenvsqldb'
 table = 'vr_trip_pickup_features'
-# table = 'trip_pickup_features_allc'
 
 # COMMAND ----------
 
 import datetime
-
 from databricks.feature_store.online_store_spec import AzureSqlServerSpec
 
 online_store = AzureSqlServerSpec(hostname, port, user, password, osdb, table)
