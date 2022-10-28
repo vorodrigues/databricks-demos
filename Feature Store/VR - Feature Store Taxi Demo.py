@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install databricks-feature-store==0.6.1
+
+# COMMAND ----------
+
 # dbutils.widgets.text('db', 'vr_taxi_fs')
 # dbutils.widgets.text('model_name', 'VR Taxi Fare')
 # dbutils.widgets.text('hostname', '')
@@ -594,22 +598,34 @@ display(with_predictions_reordered)
 
 # COMMAND ----------
 
+from databricks import feature_store
+fs = feature_store.FeatureStoreClient()
+
+# COMMAND ----------
+
+db = dbutils.widgets.get('db')
 hostname = dbutils.widgets.get('hostname')
-port = dbutils.widgets.get('port')
+port = int(dbutils.widgets.get('port'))
 user = dbutils.widgets.get('user')
 password = dbutils.widgets.get('password')
 osdb = 'oneenvsqldb'
-table = 'vr_trip_pickup_features'
 
 # COMMAND ----------
 
 import datetime
 from databricks.feature_store.online_store_spec import AzureSqlServerSpec
 
-online_store = AzureSqlServerSpec(hostname, port, user, password, osdb, table)
-
+online_store = AzureSqlServerSpec(hostname, port, user, password, osdb, 'trip_pickup_features_v3')
 fs.publish_table(
   name=f'{db}.trip_pickup_features',
+  online_store=online_store,
+  #filter_condition=f"_dt = '{str(datetime.date.today())}'",
+  mode='overwrite'
+)
+
+online_store = AzureSqlServerSpec(hostname, port, user, password, osdb, 'trip_dropoff_features_v3')
+fs.publish_table(
+  name=f'{db}.trip_dropoff_features',
   online_store=online_store,
   #filter_condition=f"_dt = '{str(datetime.date.today())}'",
   mode='overwrite'
