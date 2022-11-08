@@ -598,11 +598,6 @@ display(with_predictions_reordered)
 
 # COMMAND ----------
 
-from databricks import feature_store
-fs = feature_store.FeatureStoreClient()
-
-# COMMAND ----------
-
 db = dbutils.widgets.get('db')
 hostname = dbutils.widgets.get('hostname')
 port = int(dbutils.widgets.get('port'))
