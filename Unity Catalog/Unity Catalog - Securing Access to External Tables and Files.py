@@ -3,7 +3,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text('s3_path', '', 'S3 Path')
+# dbutils.widgets.text('s3_path', '', 'S3 Path')
 
 # COMMAND ----------
 
