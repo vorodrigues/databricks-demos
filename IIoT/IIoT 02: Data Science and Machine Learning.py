@@ -63,17 +63,7 @@ import random, string
 
 # COMMAND ----------
 
-# MAGIC %md ## 1. Model Training
-# MAGIC 
-# MAGIC The next step is to train lots of different models using different algorithms and parameters in search for the one that optimally solves our business problem.
-# MAGIC 
-# MAGIC That's where the **Spark** + **HyperOpt** + **MLflow** framework can be leveraged to easily distribute the training proccess across a cluster, efficiently optimize hyperparameters and track all experiments in order to quickly evaluate many models, choose the best one and guarantee its reproducibility.<br><br>
-# MAGIC 
-# MAGIC ![](/files/shared_uploads/victor.rodrigues@databricks.com/ml_2.jpg)
-
-# COMMAND ----------
-
-# MAGIC %md ### 1a. Feature Engineering
+# MAGIC %md ## 1. Feature Engineering
 # MAGIC In order to predict power output 6 hours ahead, we need to first time-shift our data to create our label column. We can do this easily using Spark Window partitioning. 
 # MAGIC 
 # MAGIC In order to predict remaining life, we need to backtrace the remaining life from the maintenance events. We can do this easily using cross joins. The following diagram illustrates the ML Feature Engineering pipeline:
@@ -113,29 +103,74 @@ import random, string
 
 # COMMAND ----------
 
-# MAGIC %md ### 1b. Power Output
-# MAGIC [Pandas UDFs](https://docs.microsoft.com/en-us/azure/databricks/spark/latest/spark-sql/udf-python-pandas?toc=https%3A%2F%2Fdocs.microsoft.com%2Fen-us%2Fazure%2Fazure-databricks%2Ftoc.json&bc=https%3A%2F%2Fdocs.microsoft.com%2Fen-us%2Fazure%2Fbread%2Ftoc.json) allow us to vectorize Pandas code across multiple nodes in a cluster. Here we create a UDF to train an XGBoost Regressor model against all the historic data for a particular Wind Turbine. We use a Grouped Map UDF as we perform this model training on the Wind Turbine group level.
+# MAGIC %md ## 2. Model Training
+# MAGIC 
+# MAGIC The next step is to train lots of different models using different algorithms and parameters in search for the one that optimally solves our business problem.
+# MAGIC 
+# MAGIC That's where the **Spark** + **HyperOpt** + **MLflow** framework can be leveraged to easily distribute the training proccess across a cluster, efficiently optimize hyperparameters and track all experiments in order to quickly evaluate many models, choose the best one and guarantee its reproducibility.<br><br>
+# MAGIC 
+# MAGIC ![](/files/shared_uploads/victor.rodrigues@databricks.com/ml_2.jpg)
 
 # COMMAND ----------
 
+# MAGIC %md ### 2a. Define Experiment
+
+# COMMAND ----------
+
+from hyperopt import hp, fmin, tpe, STATUS_OK
+from sklearn.model_selection import train_test_split
+from datetime import datetime
+
 # Create a function to train a XGBoost Regressor on a turbine's data
 def train_distributed_xgb(readings_pd, model_type, label_col, prediction_col):
-  deviceid = readings_pd['deviceid'][0]
+  
   mlflow.xgboost.autolog()
-  with mlflow.start_run(run_name=f'{model_type}_{deviceid}'):
-    # Log the model type and device ID
-    mlflow.log_param('deviceid', deviceid)
-    mlflow.log_param('model', model_type)
+  deviceid = readings_pd['deviceid'][0]
+  
+  # Split train and test datasets
+  train, test = train_test_split(readings_pd, train_size=0.7)
+  train_dmatrix = xgb.DMatrix(data=train[feature_cols].astype('float'),label=train[label_col])
+  test_dmatrix = xgb.DMatrix(data=test[feature_cols].astype('float'),label=test[label_col])
 
-    # Train an XGBRegressor on the data for this Turbine
-    alg = xgb.XGBRegressor() 
-    train_dmatrix = xgb.DMatrix(data=readings_pd[feature_cols].astype('float'),label=readings_pd[label_col])
-    params = {'learning_rate': 0.5, 'alpha':10, 'colsample_bytree': 0.5, 'max_depth': 5}
-    model = xgb.train(params=params, dtrain=train_dmatrix, evals=[(train_dmatrix, 'train')])
+  # Search space for HyperOpt
+  search_space = {
+    'learning_rate' : hp.loguniform('learning_rate', np.log(0.01), np.log(0.1)),
+    'alpha' : hp.loguniform('alpha', np.log(1), np.log(10)),
+    'colsample_bytree' : hp.loguniform('colsample_bytree', np.log(0.1), np.log(1.0)),
+    'max_depth' : hp.quniform('max_depth', 1, 10, 1)
+  }
+  
+  # Define how to evaluate each experiment
+  def evaluate_model(hyperopt_params):
+    
+    # Convert parameters that HyperOpt supplies as float, but must be int
+    if 'max_depth' in hyperopt_params: hyperopt_params['max_depth'] = int(hyperopt_params['max_depth'])
+    
+    # Run the experiments
+    date = datetime.strftime(datetime.now(), "%Y-%m-%d_%H-%M-%S")
+    with mlflow.start_run(run_name=f'{model_type}_{deviceid}_{date}'):
+    
+      # Log the model type and device ID
+      mlflow.log_param('deviceid', deviceid)
+      mlflow.log_param('model', model_type)
 
-    # Make predictions on the dataset and return the results
-    readings_pd[prediction_col] = model.predict(train_dmatrix)
+      # Train an XGBRegressor on the data for this Turbine
+      metrics = {}
+      model = xgb.train(params=hyperopt_params, dtrain=train_dmatrix, evals=[(train_dmatrix, 'train'),(test_dmatrix, 'test')], evals_result=metrics)
+
+    return {'status': STATUS_OK, 'loss': metrics['test']['rmse'][0]}
+  
+  # Autotune hyperparamenters
+  best_hparams = fmin(evaluate_model, search_space, algo=tpe.suggest, max_evals=10)
+    
   return readings_pd
+
+# COMMAND ----------
+
+# MAGIC %md ### 2b. Power Output
+# MAGIC [Pandas UDFs](https://docs.microsoft.com/en-us/azure/databricks/spark/latest/spark-sql/udf-python-pandas?toc=https%3A%2F%2Fdocs.microsoft.com%2Fen-us%2Fazure%2Fazure-databricks%2Ftoc.json&bc=https%3A%2F%2Fdocs.microsoft.com%2Fen-us%2Fazure%2Fbread%2Ftoc.json) allow us to vectorize Pandas code across multiple nodes in a cluster. Here we create a UDF to train an XGBoost Regressor model against all the historic data for a particular Wind Turbine. We use a Grouped Map UDF as we perform this model training on the Wind Turbine group level.
+
+# COMMAND ----------
 
 # Create a Spark Dataframe that contains the features and labels we need
 non_feature_cols = ['date','window','deviceid','winddirection','remaining_life']
@@ -147,21 +182,32 @@ prediction_col = label_col + '_predicted'
 feature_df = spark.table('feature_table').selectExpr(non_feature_cols + feature_cols + [label_col] + [f'0 as {prediction_col}'])
 
 # Register a Pandas UDF to distribute XGB model training using Spark
-@pandas_udf(feature_df.schema, PandasUDFType.GROUPED_MAP)
-def train_power_models(readings_pd):
+def train_power_models(readings_pd: pd.DataFrame) -> pd.DataFrame:
   return train_distributed_xgb(readings_pd, 'power_prediction', label_col, prediction_col)
 
-# Run the Pandas UDF against our feature dataset - this will train 1 model for each turbine
-power_predictions = feature_df.groupBy('deviceid').apply(train_power_models)
+# Run distributed model autotuning
+feature_df.groupBy('deviceid').applyInPandas(train_power_models, schema=feature_df.schema).count()
+
+# COMMAND ----------
+
+# Find the best experiment
+best_run_id = mlflow.search_runs(filter_string=f'params.deviceid="WindTurbine-1" and params.model="power_prediction"')\
+  .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
+
+# Get the model
+model_udf = mlflow.pyfunc.spark_udf(spark, f'runs:/{best_run_id}/model')
+
+# Score the dataset
+preds = feature_df.filter('deviceid="WindTurbine-1"').withColumn(prediction_col, model_udf(*feature_cols))
 
 # Save predictions to storage
-power_predictions.write.format("delta").mode("overwrite").partitionBy("date").saveAsTable("turbine_power_predictions")
+preds.createOrReplaceTempView('preds')
 
 # COMMAND ----------
 
 # MAGIC %sql 
 # MAGIC -- Plot actuals vs. predicted
-# MAGIC SELECT date, deviceid, avg(power_6_hours_ahead) as actual, avg(power_6_hours_ahead_predicted) as predicted FROM turbine_power_predictions GROUP BY date, deviceid
+# MAGIC SELECT date, deviceid, avg(power_6_hours_ahead) as actual, avg(power_6_hours_ahead_predicted) as predicted FROM preds GROUP BY date, deviceid
 
 # COMMAND ----------
 
@@ -177,7 +223,7 @@ power_predictions.write.format("delta").mode("overwrite").partitionBy("date").sa
 
 # COMMAND ----------
 
-# MAGIC %md ### 1c. Remaining Life
+# MAGIC %md ### 2c. Remaining Life
 # MAGIC Our second model predicts the remaining useful life of each Wind Turbine based on the current operating conditions. We have historical maintenance data that indicates when a replacement activity occured - this will be used to calculate the remaining life as our training label. 
 # MAGIC 
 # MAGIC Once again, we train an XGBoost model for each Wind Turbine to predict the remaining life given a set of operating parameters and weather conditions
@@ -186,6 +232,7 @@ power_predictions.write.format("delta").mode("overwrite").partitionBy("date").sa
 
 # Create a Spark Dataframe that contains the features and labels we need
 non_feature_cols = ['date','window','deviceid','winddirection','power_6_hours_ahead_predicted']
+feature_cols = ['angle','rpm','temperature','humidity','windspeed','power','age']
 label_col = 'remaining_life'
 prediction_col = label_col + '_predicted'
 
@@ -193,22 +240,32 @@ prediction_col = label_col + '_predicted'
 feature_df = spark.table('turbine_power_predictions').selectExpr(non_feature_cols + feature_cols + [label_col] + [f'0 as {prediction_col}'])
 
 # Register a Pandas UDF to distribute XGB model training using Spark
-@pandas_udf(feature_df.schema, PandasUDFType.GROUPED_MAP)
-def train_life_models(readings_pd):
+def train_life_models(readings_pd: pd.DataFrame) -> pd.DataFrame:
   return train_distributed_xgb(readings_pd, 'life_prediction', label_col, prediction_col)
 
-# Run the Pandas UDF against our feature dataset - this will train 1 model per turbine and write the predictions to a table
-life_predictions = feature_df.groupBy('deviceid').apply(train_life_models)
+# Run distributed model autotuning
+feature_df.groupBy('deviceid').applyInPandas(train_life_models, schema=feature_df.schema).count()
+
+# COMMAND ----------
+
+# Find the best experiment
+best_run_id = mlflow.search_runs(filter_string=f'params.deviceid="WindTurbine-1" and params.model="life_prediction"')\
+  .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
+
+# Get the model
+model_udf = mlflow.pyfunc.spark_udf(spark, f'runs:/{best_run_id}/model')
+
+# Score the dataset
+preds = feature_df.filter('deviceid="WindTurbine-1"').withColumn(prediction_col, model_udf(*feature_cols))
 
 # Save predictions to storage
-life_predictions.write.format("delta").mode("overwrite").partitionBy("date").saveAsTable("turbine_life_predictions")
+preds.createOrReplaceTempView('preds')
 
 # COMMAND ----------
 
 # MAGIC %sql 
 # MAGIC SELECT date, avg(remaining_life) as Actual_Life, avg(remaining_life_predicted) as Predicted_Life 
 # MAGIC FROM turbine_life_predictions 
-# MAGIC WHERE deviceid='WindTurbine-1' 
 # MAGIC GROUP BY date ORDER BY date
 
 # COMMAND ----------
@@ -217,7 +274,7 @@ life_predictions.write.format("delta").mode("overwrite").partitionBy("date").sav
 
 # COMMAND ----------
 
-# MAGIC %md ## 2. Model Deployment
+# MAGIC %md ## 3. Model Deployment
 # MAGIC 
 # MAGIC After choosing a model that best fits our needs, we can then go ahead and kick off its operationalization proccess.
 # MAGIC 
@@ -257,7 +314,7 @@ mlflow.register_model(
 
 # COMMAND ----------
 
-# MAGIC %md ## 3. Model Inference
+# MAGIC %md ## 4. Model Inference
 # MAGIC 
 # MAGIC We can now score this model in batch, streaming or via REST API calls (in case we choose to enable Serverless Model Serving) so we can consume it from any other applications or tools, like Power BI.
 # MAGIC 
@@ -267,7 +324,7 @@ mlflow.register_model(
 
 # COMMAND ----------
 
-# MAGIC %md ### 3a. Power Output
+# MAGIC %md ### 4a. Power Output
 
 # COMMAND ----------
 
@@ -294,7 +351,7 @@ display(scored_df)
 
 # COMMAND ----------
 
-# MAGIC %md ### 3b. Remaining Life
+# MAGIC %md ### 4b. Remaining Life
 
 # COMMAND ----------
 
@@ -321,7 +378,7 @@ display(scored_df)
 
 # COMMAND ----------
 
-# MAGIC %md ## 4. Asset Optimization
+# MAGIC %md ## 5. Asset Optimization
 # MAGIC We can now identify the optimal operating conditions for maximizing power output while also maximizing asset useful life. 
 # MAGIC 
 # MAGIC \\(Revenue = Price\displaystyle\sum_{d=1}^{365} Power_d\\)
@@ -371,7 +428,7 @@ display(opt_df)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Data Serving and Visualization
+# MAGIC ## 6. Data Serving and Visualization
 # MAGIC Now that our models are created and the data is scored, we can use Databricks SQL Warehouses with PowerBI to perform data warehousing and analyltic reporting to generate a report like the one below without needing to move and replicate your data.
 # MAGIC 
 # MAGIC <br><img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/PBI_report.gif" width=800>
