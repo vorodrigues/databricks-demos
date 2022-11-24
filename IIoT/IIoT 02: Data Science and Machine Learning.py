@@ -48,18 +48,16 @@
 ROOT_PATH = dbutils.widgets.get("External Location")
 
 # Pyspark and ML Imports
-import os, json, requests
-from pyspark.sql import functions as F
-from pyspark.sql.functions import pandas_udf, PandasUDFType, col, lit
+from pyspark.sql.functions import mean, col, lit
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-import mlflow, mlflow.xgboost
-import random, string
+import mlflow
 
 # COMMAND ----------
 
-# MAGIC %sql USE vr_iiot.dev
+# MAGIC %sql -- Set default database
+# MAGIC USE vr_iiot.dev
 
 # COMMAND ----------
 
@@ -207,14 +205,7 @@ model_udf = mlflow.pyfunc.spark_udf(spark, f'runs:/{best_run_id}/model')
 # Score the dataset
 preds = feature_df.filter('deviceid="WindTurbine-1"').withColumn(prediction_col, model_udf(*feature_cols))
 
-# Save predictions to storage
-preds.createOrReplaceTempView('preds')
-
-# COMMAND ----------
-
-# MAGIC %sql 
-# MAGIC -- Plot actuals vs. predicted
-# MAGIC SELECT date, deviceid, avg(power_6_hours_ahead) as actual, avg(power_6_hours_ahead_predicted) as predicted FROM preds GROUP BY date, deviceid
+display(preds.groupBy('date','deviceid').agg(mean('power_6_hours_ahead'), mean('power_6_hours_ahead_predicted')))
 
 # COMMAND ----------
 
@@ -238,13 +229,13 @@ preds.createOrReplaceTempView('preds')
 # COMMAND ----------
 
 # Create a Spark Dataframe that contains the features and labels we need
-non_feature_cols = ['date','window','deviceid','winddirection','power_6_hours_ahead_predicted']
+non_feature_cols = ['date','window','deviceid','winddirection']
 feature_cols = ['angle','rpm','temperature','humidity','windspeed','power','age']
 label_col = 'remaining_life'
 prediction_col = label_col + '_predicted'
 
 # Read in our feature table and select the columns of interest
-feature_df = spark.table('turbine_power_predictions').selectExpr(non_feature_cols + feature_cols + [label_col] + [f'0 as {prediction_col}'])
+feature_df = spark.table('feature_table').selectExpr(non_feature_cols + feature_cols + [label_col] + [f'0 as {prediction_col}'])
 
 # Register a Pandas UDF to distribute XGB model training using Spark
 def train_life_models(readings_pd: pd.DataFrame) -> pd.DataFrame:
@@ -265,15 +256,7 @@ model_udf = mlflow.pyfunc.spark_udf(spark, f'runs:/{best_run_id}/model')
 # Score the dataset
 preds = feature_df.filter('deviceid="WindTurbine-1"').withColumn(prediction_col, model_udf(*feature_cols))
 
-# Save predictions to storage
-preds.createOrReplaceTempView('preds')
-
-# COMMAND ----------
-
-# MAGIC %sql 
-# MAGIC SELECT date, avg(remaining_life) as Actual_Life, avg(remaining_life_predicted) as Predicted_Life 
-# MAGIC FROM turbine_life_predictions 
-# MAGIC GROUP BY date ORDER BY date
+display(preds.groupBy('date').agg(mean('remaining_life'),mean('remaining_life_predicted')))
 
 # COMMAND ----------
 
@@ -284,6 +267,10 @@ preds.createOrReplaceTempView('preds')
 # MAGIC The first step is to register it to the **Model Registry**, where we can version, manage its life cycle with an workflow and track/audit all changes.<br><br>
 # MAGIC 
 # MAGIC ![](/files/shared_uploads/victor.rodrigues@databricks.com/ml_3.jpg)
+
+# COMMAND ----------
+
+# MAGIC %md ### 3a. Register Models
 
 # COMMAND ----------
 
@@ -299,14 +286,35 @@ best_life_model = mlflow.search_runs(filter_string=f'tags.deviceid="{turbine}" a
 best_power_model = mlflow.search_runs(filter_string=f'tags.deviceid="{turbine}" and tags.model="{power_model}"')\
   .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
 
-mlflow.register_model(
+reg_life_model = mlflow.register_model(
   model_uri=f'runs:/{best_power_model}/model',
   name=f'VR IIoT Power Prediction - {turbine}'
 )
 
-mlflow.register_model(
+reg_power_model = mlflow.register_model(
   model_uri=f'runs:/{best_life_model}/model',
   name=f'VR IIoT Remaining Life - {turbine}'
+)
+
+# COMMAND ----------
+
+# MAGIC %md ### 3b. Deploy to Production
+
+# COMMAND ----------
+
+# Transition models to production stage — we're intentionally skipping the validation process for simplicity
+client = mlflow.client.MlflowClient()
+
+client.transition_model_version_stage(
+  name=reg_life_model.name,
+  version=reg_life_model.version,
+  stage='production'
+)
+
+client.transition_model_version_stage(
+  name=reg_power_model.name,
+  version=reg_power_model.version,
+  stage='production'
 )
 
 # COMMAND ----------
@@ -325,7 +333,7 @@ mlflow.register_model(
 
 # COMMAND ----------
 
-power_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Power Prediction - {turbine}/1')
+power_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Power Prediction - {turbine}/production')
 
 # COMMAND ----------
 
@@ -352,7 +360,7 @@ display(scored_df)
 
 # COMMAND ----------
 
-life_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Remaining Life - {turbine}/1')
+life_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Remaining Life - {turbine}/production')
 
 # COMMAND ----------
 
@@ -420,7 +428,7 @@ display(opt_df)
 
 # COMMAND ----------
 
-# MAGIC %md The optimal operating parameters for **WindTurbine-1** given the specified weather conditions is **4 degrees** for generating a maximum profit of **$620k**! Your results may vary due to the random nature of the sensor readings. 
+# MAGIC %md The optimal operating parameters for **WindTurbine-1** given the specified weather conditions is **7 degrees** for generating a maximum profit around **$600k**! Your results may vary due to the random nature of the sensor readings. 
 
 # COMMAND ----------
 

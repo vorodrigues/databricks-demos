@@ -97,7 +97,7 @@ dbutils.fs.rm(ROOT_PATH, True)
 # MAGIC 1. **Turbine Sensor readings** - this payload contains `date`,`timestamp`,`deviceid`,`rpm` and `angle` fields
 # MAGIC 2. **Weather Sensor readings** - this payload contains `date`,`timestamp`,`temperature`,`humidity`,`windspeed`, and `winddirection` fields
 # MAGIC 
-# MAGIC We split out the two payloads into separate streams and write them both into Delta locations on Azure Storage. We are able to query these two Bronze tables *immediately* as the data streams in.
+# MAGIC We split out the two payloads into separate streams and write them both into Delta locations on cloud Storage. We are able to query these two Bronze tables *immediately* as the data streams in.
 
 # COMMAND ----------
 
