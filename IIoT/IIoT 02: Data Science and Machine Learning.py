@@ -21,8 +21,8 @@
 # MAGIC 
 # MAGIC The notebook is broken into sections following these steps:<br>
 # MAGIC 1. **Machine Learning** - train XGBoost regression models using distributed ML to predict power output and asset remaining life on historical sensor data<br>
-# MAGIC 2. **Model Deployment** - deploy trained models for real-time serving in Azure ML services<br>
-# MAGIC 3. **Model Inference** - score real data instantly against hosted models via REST API
+# MAGIC 2. **Model Deployment** - deploy trained models for serving<br>
+# MAGIC 3. **Model Inference** - score real data against registered models
 
 # COMMAND ----------
 
@@ -113,7 +113,14 @@ import random, string
 
 # COMMAND ----------
 
-# MAGIC %md ### 2a. Define Experiment
+# MAGIC %md ### 2a. Define Experiment for Distributed Model Autotuning with Tracking
+# MAGIC 
+# MAGIC Benefits:
+# MAGIC - Pure Python & Pandas: easy to develop, test
+# MAGIC - Continue using your favorite libraries
+# MAGIC - Simply assume you're working with a Pandas DataFrame for a single device
+# MAGIC 
+# MAGIC <img src="https://github.com/PawaritL/data-ai-world-tour-dsml-jan-2022/blob/main/pandas-udf-workflow.png?raw=true" width=40%>
 
 # COMMAND ----------
 
@@ -150,9 +157,9 @@ def train_distributed_xgb(readings_pd, model_type, label_col, prediction_col):
     date = datetime.strftime(datetime.now(), "%Y-%m-%d_%H-%M-%S")
     with mlflow.start_run(run_name=f'{model_type}_{deviceid}_{date}'):
     
-      # Log the model type and device ID
-      mlflow.log_param('deviceid', deviceid)
-      mlflow.log_param('model', model_type)
+      # Tag the model type and device ID
+      mlflow.set_tag('deviceid', deviceid)
+      mlflow.set_tag('model', model_type)
 
       # Train an XGBRegressor on the data for this Turbine
       metrics = {}
@@ -191,7 +198,7 @@ feature_df.groupBy('deviceid').applyInPandas(train_power_models, schema=feature_
 # COMMAND ----------
 
 # Find the best experiment
-best_run_id = mlflow.search_runs(filter_string=f'params.deviceid="WindTurbine-1" and params.model="power_prediction"')\
+best_run_id = mlflow.search_runs(filter_string=f'tags.deviceid="WindTurbine-1" and tags.model="power_prediction"')\
   .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
 
 # Get the model
@@ -249,7 +256,7 @@ feature_df.groupBy('deviceid').applyInPandas(train_life_models, schema=feature_d
 # COMMAND ----------
 
 # Find the best experiment
-best_run_id = mlflow.search_runs(filter_string=f'params.deviceid="WindTurbine-1" and params.model="life_prediction"')\
+best_run_id = mlflow.search_runs(filter_string=f'tags.deviceid="WindTurbine-1" and tags.model="life_prediction"')\
   .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
 
 # Get the model
@@ -270,10 +277,6 @@ preds.createOrReplaceTempView('preds')
 
 # COMMAND ----------
 
-# MAGIC %md The models to predict remaining useful life have been trained and logged by MLflow. We can now move on to model deployment in AzureML.
-
-# COMMAND ----------
-
 # MAGIC %md ## 3. Model Deployment
 # MAGIC 
 # MAGIC After choosing a model that best fits our needs, we can then go ahead and kick off its operationalization proccess.
@@ -290,26 +293,20 @@ turbine = "WindTurbine-1"
 power_model = "power_prediction"
 life_model = "life_prediction"
 
-best_life_model = mlflow.search_runs(filter_string=f'params.deviceid="{turbine}" and params.model="{life_model}"')\
-  .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
-best_power_model = mlflow.search_runs(filter_string=f'params.deviceid="{turbine}" and params.model="{power_model}"')\
+best_life_model = mlflow.search_runs(filter_string=f'tags.deviceid="{turbine}" and tags.model="{life_model}"')\
   .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
 
-print(f'Best Life Model: {best_life_model}')
-print(f'Best Power Model: {best_power_model}')
-
-# COMMAND ----------
+best_power_model = mlflow.search_runs(filter_string=f'tags.deviceid="{turbine}" and tags.model="{power_model}"')\
+  .dropna().sort_values("metrics.train-rmse")['run_id'].iloc[0]
 
 mlflow.register_model(
   model_uri=f'runs:/{best_power_model}/model',
-  name='VR IIoT Power Prediction'
+  name=f'VR IIoT Power Prediction - {turbine}'
 )
-
-# COMMAND ----------
 
 mlflow.register_model(
   model_uri=f'runs:/{best_life_model}/model',
-  name='VR IIoT Remaining Life'
+  name=f'VR IIoT Remaining Life - {turbine}'
 )
 
 # COMMAND ----------
@@ -328,7 +325,7 @@ mlflow.register_model(
 
 # COMMAND ----------
 
-power_udf = mlflow.pyfunc.spark_udf(spark, 'models:/VR IIoT Power Prediction/1')
+power_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Power Prediction - {turbine}/1')
 
 # COMMAND ----------
 
@@ -355,7 +352,7 @@ display(scored_df)
 
 # COMMAND ----------
 
-life_udf = mlflow.pyfunc.spark_udf(spark, 'models:/VR IIoT Remaining Life/1')
+life_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Remaining Life - {turbine}/1')
 
 # COMMAND ----------
 
@@ -423,12 +420,12 @@ display(opt_df)
 
 # COMMAND ----------
 
-# MAGIC %md The optimal operating parameters for **WindTurbine-1** given the specified weather conditions is **7 degrees** for generating a maximum profit of **$1.26M**! Your results may vary due to the random nature of the sensor readings. 
+# MAGIC %md The optimal operating parameters for **WindTurbine-1** given the specified weather conditions is **4 degrees** for generating a maximum profit of **$620k**! Your results may vary due to the random nature of the sensor readings. 
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## 6. Data Serving and Visualization
-# MAGIC Now that our models are created and the data is scored, we can use Databricks SQL Warehouses with PowerBI to perform data warehousing and analyltic reporting to generate a report like the one below without needing to move and replicate your data.
+# MAGIC Now that our models are created and the data is scored, we can use Databricks SQL Warehouses with Power BI to perform data warehousing and analyltic reporting to generate a report like the one below without needing to move and replicate your data.
 # MAGIC 
 # MAGIC <br><img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/PBI_report.gif" width=800>
