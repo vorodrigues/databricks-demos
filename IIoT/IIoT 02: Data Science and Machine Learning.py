@@ -1,6 +1,8 @@
 # Databricks notebook source
-# Connection information for cloud storage
+# dbutils.widgets.text("Database", "")
 # dbutils.widgets.text("External Location", "")
+# dbutils.widgets.text("Power Model Name", "")
+# dbutils.widgets.text("Life Model Name", "")
 
 # COMMAND ----------
 
@@ -44,20 +46,21 @@
 
 # COMMAND ----------
 
-# Setup storage locations for all data
+# Parameters
+DB = dbutils.widgets.get("Database")
 ROOT_PATH = dbutils.widgets.get("External Location")
+POWER_MODEL_NAME = dbutils.widgets.get("Power Model Name")
+LIFE_MODEL_NAME = dbutils.widgets.get("Life Model Name")
 
-# Pyspark and ML Imports
+# Imports
 from pyspark.sql.functions import mean, col, lit
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 import mlflow
 
-# COMMAND ----------
-
-# MAGIC %sql -- Set default database
-# MAGIC USE vr_iiot.dev
+# Define default database
+spark.sql(f'USE {DB}')
 
 # COMMAND ----------
 
@@ -139,7 +142,7 @@ def train_distributed_xgb(readings_pd, model_type, label_col, prediction_col):
 
   # Search space for HyperOpt
   search_space = {
-    'learning_rate' : hp.loguniform('learning_rate', np.log(0.01), np.log(0.1)),
+    'learning_rate' : hp.loguniform('learning_rate', np.log(0.05), np.log(0.5)),
     'alpha' : hp.loguniform('alpha', np.log(1), np.log(10)),
     'colsample_bytree' : hp.loguniform('colsample_bytree', np.log(0.1), np.log(1.0)),
     'max_depth' : hp.quniform('max_depth', 1, 10, 1)
@@ -288,12 +291,12 @@ best_power_model = mlflow.search_runs(filter_string=f'tags.deviceid="{turbine}" 
 
 reg_life_model = mlflow.register_model(
   model_uri=f'runs:/{best_power_model}/model',
-  name=f'VR IIoT Power Prediction - {turbine}'
+  name=f'{POWER_MODEL_NAME} - {turbine}'
 )
 
 reg_power_model = mlflow.register_model(
   model_uri=f'runs:/{best_life_model}/model',
-  name=f'VR IIoT Remaining Life - {turbine}'
+  name=f'{LIFE_MODEL_NAME} - {turbine}'
 )
 
 # COMMAND ----------
@@ -333,7 +336,7 @@ client.transition_model_version_stage(
 
 # COMMAND ----------
 
-power_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Power Prediction - {turbine}/production')
+power_udf = mlflow.pyfunc.spark_udf(spark, f'models:/{POWER_MODEL_NAME} - {turbine}/production')
 
 # COMMAND ----------
 
@@ -352,7 +355,10 @@ scored_df = feature_df.withColumn(
   power_udf(*feature_cols)
 )
 
-display(scored_df)
+# Save to Delta table
+scored_df.writeTo('turbine_power_predictions').createOrReplace()
+
+display(spark.table('turbine_power_predictions'))
 
 # COMMAND ----------
 
@@ -360,7 +366,7 @@ display(scored_df)
 
 # COMMAND ----------
 
-life_udf = mlflow.pyfunc.spark_udf(spark, f'models:/VR IIoT Remaining Life - {turbine}/production')
+life_udf = mlflow.pyfunc.spark_udf(spark, f'models:/{LIFE_MODEL_NAME} - {turbine}/production')
 
 # COMMAND ----------
 
@@ -379,7 +385,10 @@ scored_df = feature_df.withColumn(
   life_udf(*feature_cols)
 )
 
-display(scored_df)
+# Save to Delta table
+scored_df.writeTo('turbine_life_predictions').createOrReplace()
+
+display(spark.table('turbine_life_predictions'))
 
 # COMMAND ----------
 
@@ -428,7 +437,7 @@ display(opt_df)
 
 # COMMAND ----------
 
-# MAGIC %md The optimal operating parameters for **WindTurbine-1** given the specified weather conditions is **7 degrees** for generating a maximum profit around **$600k**! Your results may vary due to the random nature of the sensor readings. 
+# MAGIC %md The optimal operating parameters for **WindTurbine-1** given the specified weather conditions is **7 degrees** for generating a maximum profit around **$1.4M**! Your results may vary due to the random nature of the sensor readings. 
 
 # COMMAND ----------
 
