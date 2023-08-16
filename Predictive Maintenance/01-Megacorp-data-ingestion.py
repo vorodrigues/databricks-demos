@@ -9,13 +9,13 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 
 # MAGIC %md-sandbox
 # MAGIC # Megacorp Demo
-# MAGIC 
+# MAGIC
 # MAGIC MegaCorp has been touting the benefits of creating an “Electricity Value Network,” in which digitization allows for visualization and predictive ML using sensor data from the plant. 
-# MAGIC 
+# MAGIC
 # MAGIC A great example is Bord Gáis Energy’s Whitegate power plant, a 445-MW gas combined-cycle plant. There are sensors across the plant that provide round-the-clock monitoring. ML can be used to improve plant efficiency.
-# MAGIC 
+# MAGIC
 # MAGIC Whitegate engineers desire a single, consolidated picture of Whitegate’s performance and how to run the plant most optimally.
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://databricks.com/wp-content/uploads/2020/09/delta-lake-medallion-model-scaled.jpg" width=1012/>
 
 # COMMAND ----------
@@ -37,11 +37,11 @@ dbutils.widgets.dropdown("reset_all_data", "false", ["true", "false"], "Reset al
 # COMMAND ----------
 
 # MAGIC %md ### Auto Loader
-# MAGIC 
+# MAGIC
 # MAGIC Auto Loader incrementally and efficiently processes new data files as they arrive in cloud storage.
-# MAGIC 
+# MAGIC
 # MAGIC Auto Loader provides a Structured Streaming source called cloudFiles. Given an input directory path on the cloud file storage, the cloudFiles source automatically processes new files as they arrive, with the option of also processing existing files in that directory.
-# MAGIC 
+# MAGIC
 # MAGIC ![](https://databricks.com/wp-content/uploads/2020/02/autoloader.png)
 
 # COMMAND ----------
@@ -72,7 +72,7 @@ bronzeDF.writeStream.format("delta") \
 # COMMAND ----------
 
 # MAGIC %md ### Auto Optimize
-# MAGIC 
+# MAGIC
 # MAGIC Auto Optimize is an optional set of features that automatically compact small files during individual writes to a Delta table. Paying a small cost during writes offers significant benefits for tables that are queried actively. It is particularly useful in the following scenarios:<br><br>
 # MAGIC   - Streaming use cases where latency in the order of minutes is acceptable
 # MAGIC   - MERGE INTO is the preferred method of writing into Delta Lake
@@ -140,7 +140,7 @@ spark.read.format("parquet").load("/mnt/quentin-demo-resources/turbine/status").
 # MAGIC %sql
 # MAGIC --Save the status data as our turbine_status table
 # MAGIC CREATE OR REPLACE TABLE turbine_status AS SELECT * FROM parquet.`/mnt/quentin-demo-resources/turbine/status`;
-# MAGIC 
+# MAGIC
 # MAGIC SELECT * FROM turbine_status
 
 # COMMAND ----------
@@ -217,7 +217,7 @@ turbine_stream.join(turbine_status, on='ID', how='left') \
 
 # MAGIC %md
 # MAGIC ### Full DML Support ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
-# MAGIC 
+# MAGIC
 # MAGIC Delta Lake brings ACID transactions and full DML support to data lakes: `DELETE`, `UPDATE`, `MERGE INTO`
 
 # COMMAND ----------
@@ -241,12 +241,12 @@ turbine_stream.join(turbine_status, on='ID', how='left') \
 # MAGIC 5. Delete the original table (and all of those associated files)
 # MAGIC 6. "Rename" the temp table back to the original table name
 # MAGIC 7. Drop the temp table
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://pages.databricks.com/rs/094-YMS-629/images/merge-into-legacy.gif" alt='Merge process' width=600/>
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC #### INSERT or UPDATE with Delta Lake
-# MAGIC 
+# MAGIC
 # MAGIC 2-step process: 
 # MAGIC 1. Identify rows to insert or update
 # MAGIC 2. Use `MERGE`
@@ -265,29 +265,29 @@ turbine_stream.join(turbine_status, on='ID', how='left') \
 # COMMAND ----------
 
 # MAGIC %md ### Time Travel ![](https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-tiny-logo.png)
-# MAGIC 
+# MAGIC
 # MAGIC Delta Lake’s time travel capabilities simplify building data pipelines for use cases including:
-# MAGIC 
+# MAGIC
 # MAGIC * Auditing Data Changes
 # MAGIC * Reproducing experiments & reports
 # MAGIC * Rollbacks
-# MAGIC 
+# MAGIC
 # MAGIC As you write into a Delta table or directory, every operation is automatically versioned.
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://github.com/risan4841/img/blob/master/transactionallogs.png?raw=true" width=250/>
-# MAGIC 
+# MAGIC
 # MAGIC You can query snapshots of your tables by:
 # MAGIC 1. **Version number**, or
 # MAGIC 2. **Timestamp.**
-# MAGIC 
+# MAGIC
 # MAGIC using Python, Scala, and/or SQL syntax; for these examples we will use the SQL syntax.  
-# MAGIC 
+# MAGIC
 # MAGIC For more information, refer to the [docs](https://docs.delta.io/latest/delta-utility.html#history), or [Introducing Delta Time Travel for Large Scale Data Lakes](https://databricks.com/blog/2019/02/04/introducing-delta-time-travel-for-large-scale-data-lakes.html)
 
 # COMMAND ----------
 
 # MAGIC %md Review Delta Lake Table History for  Auditing & Governance
-# MAGIC 
+# MAGIC
 # MAGIC All the transactions for this table are stored within this table including the initial set of insertions, update, delete, merge, and inserts with schema modification
 
 # COMMAND ----------
@@ -297,7 +297,7 @@ turbine_stream.join(turbine_status, on='ID', how='left') \
 # COMMAND ----------
 
 # MAGIC %md Use time travel to count records both in the latest version of the data, as well as the initial version.
-# MAGIC 
+# MAGIC
 # MAGIC As you can see, 10 new records was added.
 
 # COMMAND ----------
@@ -328,7 +328,7 @@ turbine_stream.join(turbine_status, on='ID', how='left') \
 # MAGIC -- DO NOT try to make it work during the demo.
 # MAGIC -- Understand what's required as of now (which cluster type) and the implications
 # MAGIC -- explore Databricks Unity Catalog initiative (go/uc) 
-# MAGIC 
+# MAGIC
 # MAGIC GRANT SELECT ON DATABASE turbine_gold TO `data.scientist@databricks.com`;
 # MAGIC GRANT SELECT ON DATABASE turbine_gold TO `data.analyst@databricks.com`
 
@@ -336,6 +336,7 @@ turbine_stream.join(turbine_status, on='ID', how='left') \
 
 # MAGIC %md
 # MAGIC ## Don't forget to Cancel all the streams once your demo is over
+# MAGIC
 
 # COMMAND ----------
 

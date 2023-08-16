@@ -23,23 +23,25 @@ spark.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
 
 # MAGIC %md
 # MAGIC # Feature Store taxi example notebook
-# MAGIC 
+# MAGIC
 # MAGIC This notebook illustrates the use of Feature Store to create a model that predicts NYC Yellow Taxi fares. It includes these steps:
-# MAGIC 
+# MAGIC
 # MAGIC - Compute and write features.
 # MAGIC - Train a model using these features to predict fares.
 # MAGIC - Evaluate that model on a new batch of data using existing features, saved to Feature Store.
 # MAGIC - Publish online
-# MAGIC 
+# MAGIC
 # MAGIC ## Requirements
 # MAGIC - Databricks Runtime for Machine Learning 8.3 or above. 
-# MAGIC 
+# MAGIC
 # MAGIC **Note:** This notebook is written to run with Databricks Runtime for Machine Learning 10.2 or above. If you are using Databricks Runtime for Machine Learning 10.1 or below, delete or comment out Cmd 19 and uncomment Cmd 20.
+# MAGIC
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC <img src="https://docs.databricks.com/_static/images/machine-learning/feature-store/taxi_example_flow_v3.png"/>
+# MAGIC
 
 # COMMAND ----------
 
@@ -48,13 +50,13 @@ spark.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
 # COMMAND ----------
 
 # MAGIC %md #### Load the raw data used to compute features
-# MAGIC 
+# MAGIC
 # MAGIC Load the `nyc-taxi-tiny` dataset.  This was generated from the full [NYC Taxi Data](https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page) which can be found at `dbfs:/databricks-datasets/nyctaxi` by applying the following transformations:
-# MAGIC 
+# MAGIC
 # MAGIC 1. Apply a UDF to convert latitude and longitude coordinates into ZIP codes, and add a ZIP code column to the DataFrame.
 # MAGIC 1. Subsample the dataset into a smaller dataset based on a date range query using the `.sample()` method of the Spark `DataFrame` API.
 # MAGIC 1. Rename certain columns and drop unnecessary columns.
-# MAGIC 
+# MAGIC
 # MAGIC If you want to create this dataset from the raw data yourself, follow these steps:
 # MAGIC 1. Run the Feature Store taxi example dataset notebook ([AWS](https://docs.databricks.com/_static/notebooks/machine-learning/feature-store-taxi-example-dataset.html)|[Azure](https://docs.microsoft.com/azure/databricks/_static/notebooks/machine-learning/feature-store-taxi-example-dataset.html)|[GCP](https://docs.gcp.databricks.com/_static/notebooks/machine-learning/feature-store-taxi-example-dataset.html)) to generate the Delta table.
 # MAGIC 1. In this notebook, replace the following `spark.read.format("delta").load("/databricks-datasets/nyctaxi-with-zipcodes/subsampled")` with: `spark.read.table("acardoso.nyc_yellow_taxi_with_zips")`
@@ -67,18 +69,19 @@ display(raw_data)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC From the taxi fares transactional data, we will compute two groups of features based on trip pickup and drop off zip codes.
-# MAGIC 
+# MAGIC
 # MAGIC #### Pickup features
 # MAGIC 1. Count of trips (time window = 1 hour, sliding window = 15 minutes)
 # MAGIC 1. Mean fare amount (time window = 1 hour, sliding window = 15 minutes)
-# MAGIC 
+# MAGIC
 # MAGIC #### Drop off features
 # MAGIC 1. Count of trips (time window = 30 minutes)
 # MAGIC 1. Does trip end on the weekend (custom feature using python code)
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://docs.databricks.com/_static/images/machine-learning/feature-store/taxi_example_computation_v5.png"/>
+# MAGIC
 
 # COMMAND ----------
 
@@ -223,9 +226,9 @@ fs.create_table(
 # COMMAND ----------
 
 # MAGIC %md ## Update features
-# MAGIC 
+# MAGIC
 # MAGIC Use the `write_table` function to update the feature table values.
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://docs.databricks.com/_static/images/machine-learning/feature-store/taxi_example_compute_and_write.png"/>
 
 # COMMAND ----------
@@ -267,7 +270,7 @@ fs.write_table(
 # COMMAND ----------
 
 # MAGIC %md When writing, both `merge` and `overwrite` modes are supported.
-# MAGIC 
+# MAGIC
 # MAGIC     fs.write_table(
 # MAGIC       name="acardoso.trip_pickup_features",
 # MAGIC       df=pickup_features_df,
@@ -275,7 +278,7 @@ fs.write_table(
 # MAGIC     )
 # MAGIC     
 # MAGIC Data can also be streamed into Feature Store by passing a dataframe where `df.isStreaming` is set to `True`:
-# MAGIC 
+# MAGIC
 # MAGIC     fs.write_table(
 # MAGIC       name="streaming_example.streaming_features",
 # MAGIC       df=streaming_df,
@@ -300,25 +303,27 @@ fs.write_table(
 # COMMAND ----------
 
 # MAGIC %md ## Feature Search and Discovery
+# MAGIC
+# MAGIC
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC You can now discover your feature tables in the <a href="#feature-store/" target="_blank">Feature Store UI</a>.
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://docs.databricks.com/_static/images/machine-learning/feature-store/taxi_example_flow_v3.png"/>
-# MAGIC 
+# MAGIC
 # MAGIC Search by "trip_pickup_features" or "trip_dropoff_features" to view details such as table schema, metadata, data sources, producers, and online stores. 
-# MAGIC 
+# MAGIC
 # MAGIC You can also edit the description for the feature table, or configure permissions for a feature table using the dropdown icon next to the feature table name. 
-# MAGIC 
+# MAGIC
 # MAGIC Check the [Use the Feature Store UI
 # MAGIC ](https://docs.databricks.com/applications/machine-learning/feature-store.html#use-the-feature-store-ui) documentation for more details.
 
 # COMMAND ----------
 
 # MAGIC %md ## Train a model
-# MAGIC 
+# MAGIC
 # MAGIC This section illustrates how to train a model using the pickup and dropoff features stored in Feature Store. It trains a LightGBM model to predict taxi fare.
 
 # COMMAND ----------
@@ -389,24 +394,24 @@ display(taxi_data)
 # COMMAND ----------
 
 # MAGIC %md ### Understanding how a training dataset is created
-# MAGIC 
+# MAGIC
 # MAGIC In order to train a model, you need to create a training dataset that is used to train the model.  The training dataset is comprised of:
-# MAGIC 
+# MAGIC
 # MAGIC 1. Raw input data
 # MAGIC 1. Features from the feature store
-# MAGIC 
+# MAGIC
 # MAGIC The raw input data is needed because it contains:
-# MAGIC 
+# MAGIC
 # MAGIC 1. Primary keys used to join with features.
 # MAGIC 1. Raw features like `trip_distance` that are not in the feature store.
 # MAGIC 1. Prediction targets like `fare` that are required for model training.
-# MAGIC 
+# MAGIC
 # MAGIC Here's a visual overview that shows the raw input data being combined with the features in the Feature Store to produce the training dataset:
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://docs.databricks.com/_static/images/machine-learning/feature-store/taxi_example_feature_lookup.png"/>
-# MAGIC 
+# MAGIC
 # MAGIC These concepts are described further in the Creating a Training Dataset documentation ([AWS](https://docs.databricks.com/applications/machine-learning/feature-store.html#create-a-training-dataset)|[Azure](https://docs.microsoft.com/en-us/azure/databricks/applications/machine-learning/feature-store#create-a-training-dataset)|[GCP](https://docs.gcp.databricks.com/applications/machine-learning/feature-store.html#create-a-training-dataset)).
-# MAGIC 
+# MAGIC
 # MAGIC The next cell loads features from Feature Store for model training by creating a `FeatureLookup` for each needed feature.
 
 # COMMAND ----------
@@ -438,13 +443,13 @@ dropoff_feature_lookups = [
 # COMMAND ----------
 
 # MAGIC %md ### Create a Training Dataset
-# MAGIC 
+# MAGIC
 # MAGIC When `fs.create_training_set(..)` is invoked below, the following steps will happen:
-# MAGIC 
+# MAGIC
 # MAGIC 1. A `TrainingSet` object will be created, which will select specific features from Feature Store to use in training your model. Each feature is specified by the `FeatureLookup`'s created above. 
-# MAGIC 
+# MAGIC
 # MAGIC 1. Features are joined with the raw input data according to each `FeatureLookup`'s `lookup_key`.
-# MAGIC 
+# MAGIC
 # MAGIC The `TrainingSet` is then transformed into a DataFrame to train on. This DataFrame includes the columns of taxi_data, as well as the features specified in the `FeatureLookups`.
 
 # COMMAND ----------
@@ -565,8 +570,9 @@ with_predictions = fs.score_batch(model_uri, new_taxi_data)
 # COMMAND ----------
 
 # MAGIC %md ### View the taxi fare predictions
-# MAGIC 
+# MAGIC
 # MAGIC This code reorders the columns to show the taxi fare predictions in the first column.  Note that the `predicted_fare_amount` roughly lines up with the actual `fare_amount`, although more data and feature engineering would be required to improve the model accuracy.
+# MAGIC
 
 # COMMAND ----------
 
@@ -629,6 +635,6 @@ fs.publish_table(
 # COMMAND ----------
 
 # MAGIC %md ## Next steps
-# MAGIC 
+# MAGIC
 # MAGIC 1. Explore the feature tables created in this example in the <a href="#feature-store">Feature Store UI</a>.
 # MAGIC 1. Adapt this notebook to your own data and create your own feature tables.
