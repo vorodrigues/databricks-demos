@@ -6,38 +6,28 @@
 
 # COMMAND ----------
 
-# THIS CELL SHOULD BE RUN TO CLEAN UP GENERATED EVENTS FROM PREVIOUS DEMOS
-
-# Parameters
-DB = dbutils.widgets.get("Database")
-ROOT_PATH = dbutils.widgets.get("External Location")
-BRONZE_PATH = ROOT_PATH + "bronze/"
-SILVER_PATH = ROOT_PATH + "silver/"
-GOLD_PATH = ROOT_PATH + "gold/"
-CHECKPOINT_PATH = ROOT_PATH + "checkpoints/"
-
-spark.sql(f'USE {DB}')
-spark.conf.set('spark.databricks.delta.retentionDurationCheck.enabled', 'false')
-for tbl in ['turbine_raw', 'turbine_agg', 'turbine_enriched', 'weather_raw', 'weather_agg']:
-  print(f'Resetting table {tbl}...')
-  spark.sql(f'RESTORE {tbl} TO VERSION AS OF 0')
-  spark.sql(f'VACUUM {tbl} RETAIN 0 HOURS')
-  # The following lines are only required if you have data ahead of current time in your table
-  # col = 'timestamp' if tbl[-3:] == 'raw' else 'window'
-  # spark.sql(f'DELETE FROM {tbl} WHERE {col} >= current_timestamp()')
-spark.conf.set('spark.databricks.delta.retentionDurationCheck.enabled', 'true')
-
-dbutils.fs.rm(CHECKPOINT_PATH, True)
-
-# COMMAND ----------
-
-# MAGIC %md # End to End Industrial IoT (IIoT) on Databricks
+# MAGIC %md-sandbox
+# MAGIC # End to End Industrial IoT (IIoT) on Databricks
 # MAGIC ## Part 1 - Data Engineering
-# MAGIC This notebook demonstrates the following architecture for IIoT Ingest, Processing and Analytics on Databricks. The following architecture is implemented for the demo. 
-# MAGIC <img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/end_to_end_architecture.png" width=800>
+# MAGIC
+# MAGIC <img style="float: left; margin-right: 20px" width="400px" src="https://github.com/databricks-demos/dbdemos-resources/raw/main/images/manufacturing/lakehouse-iot-turbine/lakehouse-manuf-iot-1.png" />
+# MAGIC
+# MAGIC
+# MAGIC <br/>
+# MAGIC <div style="padding-left: 420px">
+# MAGIC Our first step is to ingest and clean the raw data we received so that our Data Analyst team can start running analysis on top of it.
+# MAGIC
+# MAGIC
+# MAGIC <img src="https://pages.databricks.com/rs/094-YMS-629/images/delta-lake-logo.png" style="float: right; margin-top: 20px" width="200px">
+# MAGIC
+# MAGIC ### Delta Lake
+# MAGIC
+# MAGIC All the tables we'll create in the Lakehouse will be stored as Delta Lake tables. [Delta Lake](https://delta.io) is an open storage framework for reliability and performance. <br/>
+# MAGIC It provides many functionalities such as *(ACID Transaction, DELETE/UPDATE/MERGE, Clone zero copy, Change data Capture...)* <br />
+# MAGIC For more details on Delta Lake, run `dbdemos.install('delta-lake')`
 # MAGIC
 # MAGIC The notebook is broken into sections following these steps:
-# MAGIC 1. **Data Ingest** - stream real-time raw sensor data from Azure IoT Hubs into the Delta format in cloud storage
+# MAGIC 1. **Data Ingestion** - stream real-time raw sensor data from Azure IoT Hubs into the Delta format in cloud storage
 # MAGIC 2. **Data Processing** - stream process sensor data from raw (Bronze) to silver (aggregated) to gold (enriched) Delta tables on cloud storage
 
 # COMMAND ----------
@@ -48,11 +38,9 @@ dbutils.fs.rm(CHECKPOINT_PATH, True)
 # MAGIC
 # MAGIC ### Services Required
 # MAGIC * Azure IoT Hub 
-# MAGIC * [Azure IoT Simulator](https://azure-samples.github.io/raspberry-pi-web-simulator/) running with the code provided in [this github repo](https://github.com/tomatoTomahto/azure_databricks_iot/blob/master/azure_iot_simulator.js) and configured for your IoT Hub
-# MAGIC * Cloud storage
 # MAGIC
 # MAGIC ### Databricks Configuration Required
-# MAGIC * 3-node (min) Databricks Cluster running **DBR 7.0+** and the following libraries:
+# MAGIC * 3-node (min) Databricks Cluster running **DBR 11.3 ML** and the following libraries:
 # MAGIC   * **Azure Event Hubs Connector for Databricks** - Maven coordinates `com.microsoft.azure:azure-eventhubs-spark_2.12:2.3.17`
 
 # COMMAND ----------
@@ -75,7 +63,7 @@ ehConf = {
 }
 
 # Enable auto compaction and optimized writes in Delta
-spark.conf.set("spark.sql.shuffle.partitions", 8)
+spark.conf.set("spark.sql.shuffle.partitions", 12)
 spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "false")
 spark.conf.set("spark.databricks.streaming.statefulOperator.asyncCheckpoint.enabled", "false")
@@ -83,6 +71,7 @@ spark.conf.set("spark.sql.streaming.stateStore.providerClass", "com.databricks.s
 
 # Imports
 from pyspark.sql import functions as F
+import mlflow
 
 # Define default database
 spark.sql(f'USE {DB}')
@@ -109,41 +98,41 @@ spark.sql(f'USE {DB}')
 # COMMAND ----------
 
 # Schema of incoming data from IoT hub
-schema = "timestamp timestamp, deviceId string, temperature double, humidity double, windspeed double, winddirection string, rpm double, angle double"
+schema = "timestamp timestamp, deviceId string, temperature double, humidity double, windspeed double, winddirection string, rpm double, angle double, power double"
 
 # Read directly from IoT Hub using the EventHubs library for Databricks
 iot_stream = (
-  spark.readStream.format("eventhubs")                                               # Read from IoT Hubs directly
-    .options(**ehConf)                                                               # Use the Event-Hub-enabled connect string
-    .load()                                                                          # Load the data
-    .withColumn('reading', F.from_json(F.col('body').cast('string'), schema))        # Extract the "body" payload from the messages
-    .select('reading.*', F.to_date('reading.timestamp').alias('date'))               # Create a "date" field for partitioning
+  spark.readStream.format("eventhubs")
+    .options(**ehConf)
+    .load()
+    .withColumn('reading', F.from_json(F.col('body').cast('string'), schema))
+    .select('reading.*', F.to_date('reading.timestamp').alias('date'))
 )
 
 # Split our IoT Hub stream into separate streams and write them both into their own Delta locations
 # Write turbine events
-(iot_stream.filter('temperature is null')                                          # Filter out turbine telemetry from other data streams
-  .select('date','timestamp','deviceId','rpm','angle')                             # Extract the fields of interest
-  .writeStream.format('delta')                                                     # Write our stream to the Delta format
-  .partitionBy('date')                                                             # Partition our data by Date for performance
-  .option("checkpointLocation", CHECKPOINT_PATH + "turbine_raw")                   # Checkpoint so we can restart streams gracefully
-  .toTable('turbine_raw')                                                          # Stream the data into a Delta Table
+(iot_stream.filter('temperature is null')
+  .select('date','timestamp','deviceId','rpm','angle','power')
+  .writeStream.format('delta')
+  .partitionBy('date')
+  .option("checkpointLocation", CHECKPOINT_PATH + "turbine_raw")
+  .toTable('turbine_raw')
 )
 
 # Write weather events
-(iot_stream.filter(iot_stream.temperature.isNotNull())                             # Filter out weather telemetry only
-  .select('date','deviceid','timestamp','temperature','humidity','windspeed','winddirection') 
-  .writeStream.format('delta')                                                     # Write our stream to the Delta format
-  .partitionBy('date')                                                             # Partition our data by Date for performance
-  .option("checkpointLocation", CHECKPOINT_PATH + "weather_raw")                   # Checkpoint so we can restart streams gracefully
-  .toTable('weather_raw')                                                          # Stream the data into a Delta Table
+(iot_stream.filter(iot_stream.temperature.isNotNull())
+  .select('date','deviceid','timestamp','temperature','humidity','windspeed','winddirection')
+  .writeStream.format('delta')
+  .partitionBy('date')
+  .option("checkpointLocation", CHECKPOINT_PATH + "weather_raw")
+  .toTable('weather_raw')
 )
 
 # COMMAND ----------
 
 # MAGIC %sql 
 # MAGIC -- We can query the data directly from storage immediately as soon as it starts streams into Delta 
-# MAGIC SELECT * FROM turbine_raw WHERE deviceid = 'WindTurbine-000001' AND `timestamp` > current_timestamp() - INTERVAL 2 minutes
+# MAGIC SELECT * FROM turbine_raw WHERE deviceid = 'WindTurbine-1' AND `timestamp` > current_timestamp() - INTERVAL 2 minutes
 
 # COMMAND ----------
 
@@ -187,31 +176,31 @@ def merge_delta(incremental, target):
     incremental.writeTo(target).partitionedBy('date').createOrReplace()
     
 # Stream turbine events to silver layer
-(spark.readStream.format('delta').table("turbine_raw")                       # Read data as a stream from our source Delta table
-  .filter("date = current_date()")                                           # Only for demo purposes
+(spark.readStream.format('delta').table("turbine_raw")
+  .filter("date = current_date()")   # Only for demo purposes
   .withWatermark('timestamp', '30 seconds')
-  .groupBy('deviceId','date',F.window('timestamp','15 seconds'))             # Aggregate readings to defined window
-  .agg(F.avg('rpm').alias('rpm'), F.avg("angle").alias("angle"))
-  .selectExpr('deviceId', 'date', 'window.start as window', 'rpm', 'angle')
-  .writeStream                                                               # Write the resulting stream
-  .foreachBatch(lambda i, b: merge_delta(i, "turbine_agg"))                  # Pass each micro-batch to a function
-  .outputMode("update")                                                      # Merge works with update mode
-  .option("checkpointLocation", CHECKPOINT_PATH + "turbine_agg")             # Checkpoint so we can restart streams gracefully
+  .groupBy('deviceId','date',F.window('timestamp','15 seconds'))
+  .agg(F.avg('rpm').alias('rpm'), F.avg("angle").alias("angle"), F.avg("power").alias("power"))
+  .selectExpr('deviceId', 'date', 'window.start as window', 'rpm', 'angle', 'power')
+  .writeStream
+  .foreachBatch(lambda i, b: merge_delta(i, "turbine_agg"))
+  .outputMode("update")
+  .option("checkpointLocation", CHECKPOINT_PATH + "turbine_agg")
   .start()
 )
 
 # Stream wheather events to silver layer
-(spark.readStream.format('delta').table("weather_raw")                       # Read data as a stream from our source Delta table
-  .filter("date = current_date()")                                           # Only for demo purposes
+(spark.readStream.format('delta').table("weather_raw")
+  .filter("date = current_date()")   # Only for demo purposes
   .withWatermark('timestamp', '30 seconds')
-  .groupBy('deviceid','date',F.window('timestamp','15 seconds'))             # Aggregate readings to defined window
+  .groupBy('deviceid','date',F.window('timestamp','15 seconds'))
   .agg({"temperature":"avg","humidity":"avg","windspeed":"avg","winddirection":"last"})
   .selectExpr('date','window.start as window','deviceid','`avg(temperature)` as temperature','`avg(humidity)` as humidity',
               '`avg(windspeed)` as windspeed','`last(winddirection)` as winddirection')
-  .writeStream                                                               # Write the resulting stream
-  .foreachBatch(lambda i, b: merge_delta(i, "weather_agg"))                  # Pass each micro-batch to a function
-  .outputMode("update")                                                      # Merge works with update mode
-  .option("checkpointLocation", CHECKPOINT_PATH + "weather_agg")             # Checkpoint so we can restart streams gracefully
+  .writeStream
+  .foreachBatch(lambda i, b: merge_delta(i, "weather_agg"))
+  .outputMode("update")
+  .option("checkpointLocation", CHECKPOINT_PATH + "weather_agg")
   .start()
 )
 
@@ -220,61 +209,76 @@ def merge_delta(incremental, target):
 # MAGIC %sql
 # MAGIC -- As data gets merged in real-time to our hourly table, we can query it immediately
 # MAGIC SELECT * FROM turbine_agg t JOIN weather_agg w ON (t.date=w.date AND t.window=w.window) 
-# MAGIC WHERE t.deviceid='WindTurbine-000001' AND t.window > current_timestamp() - INTERVAL 10 minutes
+# MAGIC WHERE t.deviceid='WindTurbine-1' AND t.window > current_timestamp() - INTERVAL 10 minutes
 # MAGIC ORDER BY t.window DESC
 
 # COMMAND ----------
 
-# MAGIC %md ### 2b. Gold Layer
+# MAGIC %md ### 2b. Gold Layer & ML Inference
 # MAGIC Next we perform a streaming join of weather and turbine readings to create one enriched dataset we can use for data science and model training.
+# MAGIC
+# MAGIC Also, our Data Science team has already used this data to build a predictive maintenance model and saved it into MLflow Model Registry (we'll see how to do that next).
+# MAGIC
+# MAGIC One of the key value of the Lakehouse is that we can easily load this model and predict faulty turbines with into our pipeline directly.
+# MAGIC
+# MAGIC Note that we don't have to worry about the model framework (sklearn or other), MLflow abstract that for us.
+# MAGIC
+# MAGIC All we have to do is load the model, and call it as a Spark UDF (or SQL)
 
 # COMMAND ----------
 
-# Read streams from Delta Silver tables and join them together on common columns (date & window)
-turbine_agg = spark.readStream.format('delta').option("ignoreChanges", True).table('turbine_agg').withWatermark('window', '30 seconds') \
-  .filter("date = current_date()")  # Only for demo purposes
-weather_agg = spark.readStream.format('delta').option("ignoreChanges", True).table('weather_agg').withWatermark('window', '30 seconds').drop('deviceid') \
-  .filter("date = current_date()")  # Only for demo purposes
-turbine_enriched = turbine_agg.join(weather_agg, ['date','window'])
+# Load our model to predict the turbine remaining life
+predict_remaining_life = mlflow.pyfunc.spark_udf(spark, 'models:/VR IIoT - Life - WindTurbine-1/production', result_type='float')
+
+# COMMAND ----------
+
+# Read streams from both Silver Delta tables
+turbine_agg = (spark.readStream.format('delta')
+  .option("ignoreChanges", True)
+  .table('turbine_agg')
+  .withWatermark('window', '30 seconds')
+  .filter("date = current_date()")   # Only for demo purposes
+)
+weather_agg = (spark.readStream.format('delta')
+  .option("ignoreChanges", True)
+  .table('weather_agg')
+  .withWatermark('window', '30 seconds')
+  .drop('deviceid')
+  .filter("date = current_date()")   # Only for demo purposes
+)
+
+# Identify the last maintenance for each turbine
+dates_df = spark.sql('select deviceid, max(date) as maint_date from turbine_maintenance group by deviceid')
+
+# Join all streams
+turbine_enriched = (turbine_agg
+  .join(weather_agg, ['date','window'])
+  .join(dates_df, on='deviceid', how='left')
+)
 
 # Write the stream to a foreachBatch function which performs the MERGE as before
 (turbine_enriched
-  .selectExpr('date','deviceid','window','rpm','angle','temperature','humidity','windspeed','winddirection')
-  .writeStream 
+  .selectExpr('date','deviceid','window','rpm','angle','power','temperature','humidity','windspeed','winddirection',
+              "datediff(date,ifnull(maint_date,to_date('2022-11-21'))) as age")
+  .withColumn('remaining_life', predict_remaining_life())
+  .writeStream
   .foreachBatch(lambda i, b: merge_delta(i, "turbine_enriched"))
-  .option("checkpointLocation", CHECKPOINT_PATH + "turbine_enriched")         
+  .option("checkpointLocation", CHECKPOINT_PATH + "turbine_enriched")
   .start()
 )
 
 # COMMAND ----------
 
-# MAGIC %sql SELECT * FROM turbine_enriched WHERE deviceid='WindTurbine-000001' AND window > current_timestamp() - INTERVAL 5 minutes
+# MAGIC %sql SELECT * FROM turbine_enriched WHERE deviceid IN ('WindTurbine-10','WindTurbine-20') AND window > current_timestamp() - INTERVAL 5 minutes
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Benefits of Delta Lake on Time-Series Data
-# MAGIC A key component of this architecture is the **Delta** storage format, which provides a layer of resiliency and performance on all data sources in cloud storage. However, Data Lakes alone do not solve challenges that come with time-series streaming data. Specifically for time-series data, Delta provides the following advantages over other storage formats:
+# MAGIC ## Conclusion
+# MAGIC Our pipeline is now ready. We have an end-to-end cycle and our ML model has been integrated seamlessly by our Data Engineering team.
 # MAGIC
-# MAGIC |**Required Capability**|**Other formats on ADLS**|**Delta Format on ADLS**|
-# MAGIC |--------------------|-----------------------------|---------------------------|
-# MAGIC |**Unified batch & streaming**|Data Lakes are often used in conjunction with a streaming store like CosmosDB, resulting in a complex architecture|ACID-compliant transactions enable data engineers to perform streaming ingest and historically batch loads into the same locations on cloud storage|
-# MAGIC |**Schema enforcement and evolution**|Data Lakes do not enforce schema, requiring all data to be pushed into a relational database for reliability|Schema is enforced by default. As new IoT devices are added to the data stream, schemas can be evolved safely so downstream applications don’t fail|
-# MAGIC |**Efficient Upserts**|Data Lakes do not support in-line updates and merges, requiring deletion and insertions of entire partitions to perform updates|MERGE commands are effective for situations handling delayed IoT readings, modified dimension tables used for real-time enrichment, or if data needs to be reprocessed|
-# MAGIC |**File Compaction**|Streaming time-series data into Data Lakes generate hundreds or even thousands of tiny files|Auto-compaction in Delta optimizes the file sizes to increase throughput and parallelism|
-# MAGIC |**Multi-dimensional clustering**|Data Lakes provide push-down filtering on partitions only|ZORDERing time-series on fields like timestamp or sensor ID allows Databricks to filter and join on those columns up to 100x faster than simple partitioning techniques|
+# MAGIC For more details on model training, open the [model training notebook]($../IIoT 02: Data Science and Machine Learning).
 # MAGIC
-
-# COMMAND ----------
-
-# MAGIC %md ## 4. Analyze data and develop ML models with Databricks
-# MAGIC Databricks SQL Warehouses provides on-demand SQL directly on Data Lake source formats, which can also directly serve data for **Data Warehousing** workloads like **BI dashboarding** and **reporting**. 
+# MAGIC Our final dataset includes our ML prediction for our Predictive Maintenance use-case. 
 # MAGIC
-# MAGIC <img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/synapse_databricks_delta.png" width=800>
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC select *
-# MAGIC from vr_iiot.dev.turbine_enriched
-# MAGIC where `window` > now() - INTERVAL 2 minutes
+# MAGIC We are now ready to build our Predictive Maintenance dashboard to track the main KPIs and status of our entire Wind Turbine Farm in <a href="/sql/dashboards/f27ba14b-1be9-4dbf-944b-f40fbbb47aa5">DBSQL</a> and/or <a href="https://vorodrigues.grafana.net/d/acef080c-3e23-4d11-8e1e-8109646c7c76/wind-turbines-monitoring"> Grafana</a>.

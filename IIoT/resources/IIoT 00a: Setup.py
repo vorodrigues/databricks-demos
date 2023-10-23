@@ -178,7 +178,7 @@
 # MAGIC DROP TABLE IF EXISTS vr_iiot.dev.turbine_enriched;
 # MAGIC DROP TABLE IF EXISTS vr_iiot.dev.weather_raw;
 # MAGIC DROP TABLE IF EXISTS vr_iiot.dev.weather_agg;
-# MAGIC 
+# MAGIC
 # MAGIC CREATE TABLE vr_iiot.dev.turbine_raw CLONE vr_iiot.backup.turbine_raw;
 # MAGIC CREATE TABLE vr_iiot.dev.turbine_agg CLONE vr_iiot.backup.turbine_agg;
 # MAGIC CREATE TABLE vr_iiot.dev.turbine_enriched CLONE vr_iiot.backup.turbine_enriched;
@@ -264,7 +264,7 @@ spark.sql(f'CREATE TABLE turbine_maintenance USING DELTA LOCATION "{GOLD_PATH + 
 # COMMAND ----------
 
 # MAGIC %md ### gold_readings
-# MAGIC 
+# MAGIC
 # MAGIC Our Delta Gold tables are now ready for predictive analytics! We now have hourly weather, turbine operating and power measurements, and daily maintenance logs going back one year. We can see that there is significant correlation between most of the variables.
 
 # COMMAND ----------
@@ -280,3 +280,99 @@ spark.sql(f'CREATE TABLE turbine_maintenance USING DELTA LOCATION "{GOLD_PATH + 
 # MAGIC   LEFT JOIN turbine_maintenance m ON (r.date=m.date AND r.deviceid=m.deviceid);
 # MAGIC   
 # MAGIC SELECT * FROM gold_readings ORDER BY deviceid, window
+
+# COMMAND ----------
+
+# MAGIC %md ## 3. Other Sources
+
+# COMMAND ----------
+
+# MAGIC %md ### location
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC CREATE OR REPLACE TABLE vr_iiot.dev.devices AS 
+# MAGIC SELECT
+# MAGIC   'WindTurbine-' || idx as deviceId,
+# MAGIC   ARRAY('Databreeze','BrixFlux','Wind House')[cast(3*random() as int)] as model_name,
+# MAGIC   case when idx <= 250
+# MAGIC     then 'Parazinho'
+# MAGIC     else 'Joao Camara'
+# MAGIC     end as field_name,
+# MAGIC   case when idx <= 250
+# MAGIC     then -5.281300 + 0.002000 * ((idx - 1) div 10)
+# MAGIC     else -5.544559 + 0.002000 * ((idx - 1) div 10)
+# MAGIC     end as lat,
+# MAGIC   case when idx <= 250
+# MAGIC     then -35.919200 + 0.004000 * ((idx - 1) % 10)
+# MAGIC     else -35.8658049 + 0.004000 * ((idx - 1) % 10) 
+# MAGIC     end as lon
+# MAGIC FROM (
+# MAGIC   SELECT explode(sequence(1,500)) AS idx
+# MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC with w as (
+# MAGIC   select max(`window`) as max_window from vr_iiot.dev.turbine_enriched
+# MAGIC )
+# MAGIC select
+# MAGIC   d.deviceId,
+# MAGIC   d.model_name,
+# MAGIC   d.field_name,
+# MAGIC   d.lat,
+# MAGIC   d.lon,
+# MAGIC   avg(t.rpm) as rpm,
+# MAGIC   avg(t.temperature) as temperature,
+# MAGIC   avg(t.remaining_life) as remaining_life
+# MAGIC from vr_iiot.dev.devices d
+# MAGIC left join vr_iiot.dev.turbine_enriched t
+# MAGIC inner join w on
+# MAGIC   t.deviceid = d.deviceId
+# MAGIC   and t.`window` > w.max_window - INTERVAL 5 minute
+# MAGIC group by d.deviceid, d.model_name, d.field_name, d.lat, d.lon
+
+# COMMAND ----------
+
+# MAGIC %md ### ERP (parts)
+
+# COMMAND ----------
+
+# MAGIC %sql create database if not exists vr_iiot.erp;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC create or replace table vr_iiot.erp.inventory as
+# MAGIC SELECT
+# MAGIC   ARRAY('Parazinho','Joao Camara')[cast(2*random() as int)] as field_name,
+# MAGIC   ARRAY('Gear Box','Brake','Controller','Anemometer','Yaw Drive','Power Cable','Low Speed Shaft','High Speed Shaft','Main Shaft Bearing','Inverter')[cast(10*random() as int)] as part_name,
+# MAGIC   ARRAY('Databreeze','BrixFlux','Wind House')[cast(3*random() as int)] as model_name,
+# MAGIC   cast(5*random() as int) as quantity
+# MAGIC FROM (
+# MAGIC   SELECT explode(sequence(1,60)) AS idx
+# MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %md ### MES (shifts / capacitated personnel)
+
+# COMMAND ----------
+
+# MAGIC %sql create database if not exists vr_iiot.mes;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC create or replace table vr_iiot.mes.maintenance_schedule as
+# MAGIC SELECT
+# MAGIC   field_name,
+# MAGIC   model_name,
+# MAGIC   date_add(to_date('2023-07-01'), cast(180*random() as int)) as date
+# MAGIC FROM (
+# MAGIC   select field_name, explode(model_name) as model_name from (
+# MAGIC     select explode(ARRAY('Parazinho','Joao Camara')) as field_name, ARRAY('Databreeze','BrixFlux','Wind House') as model_name
+# MAGIC   )
+# MAGIC )

@@ -6,43 +6,40 @@
 
 # COMMAND ----------
 
-# MAGIC %md # End to End Industrial IoT (IIoT) on Databricks 
-# MAGIC ## Part 2 - Machine Learning
-# MAGIC 
-# MAGIC 
+# MAGIC %md-sandbox
+# MAGIC # End to End Industrial IoT (IIoT) on Databricks 
+# MAGIC ## Part 2 - Data Science and Machine Learning
+# MAGIC
+# MAGIC <img width="400px" style="float: left; margin-right: 30px" src="https://github.com/databricks-demos/dbdemos-resources/raw/main/images/manufacturing/lakehouse-iot-turbine/lakehouse-manuf-iot-3.png" />
+# MAGIC
 # MAGIC Now that our data is flowing reliably from our sensor devices into an enriched Delta table in cloud storage, we can start to build ML models to predict power output and remaining life of our assets using historical sensor, weather, power and maintenance data. 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC We create two models ***for each Wind Turbine***:
 # MAGIC 1. **Turbine Power Output** - using current readings for turbine operating parameters (angle, RPM) and weather (temperature, humidity, etc.), predict the expected power output 6 hours from now
 # MAGIC 2. **Turbine Remaining Life** - predict the remaining life in days until the next maintenance event
-# MAGIC 
-# MAGIC <img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/turbine_models.png" width=800>
-# MAGIC 
+# MAGIC
+# MAGIC <br><br><br><br>
+# MAGIC <img style="float: right; margin-right: 10px" src="https://sguptasa.blob.core.windows.net/random/iiot_blog/turbine_models.png" width=800>
+# MAGIC
 # MAGIC We will use the XGBoost framework to train regression models. Due to the size of the data and number of Wind Turbines, we will use Spark UDFs to distribute training across all the nodes in our cluster.
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC The notebook is broken into sections following these steps:<br>
-# MAGIC 1. **Machine Learning** - train XGBoost regression models using distributed ML to predict power output and asset remaining life on historical sensor data<br>
-# MAGIC 2. **Model Deployment** - deploy trained models for serving<br>
-# MAGIC 3. **Model Inference** - score real data against registered models
+# MAGIC 1. **Feature Engineering** - prepare features to improve their predictive power
+# MAGIC 2. **Model Training** - train XGBoost regression models using distributed ML to predict power output and asset remaining life on historical sensor data<br>
+# MAGIC 3. **Model Deployment** - deploy trained models for serving<br>
+# MAGIC 4. **Model Inference** - score real data against registered models<br>
+# MAGIC 5. **Operational Optimization** - combine both predictions to provide best opertating parameters
 
 # COMMAND ----------
 
 # MAGIC %md ## 0. Environment Setup
-# MAGIC 
+# MAGIC
 # MAGIC The pre-requisites are listed below:
-# MAGIC 
-# MAGIC ### Services Required
-# MAGIC * Cloud storage
-# MAGIC 
-# MAGIC ### Databricks Configuration Required
-# MAGIC * 3-node (min) Databricks Cluster running **DBR 7.0ML+** and the following libraries:
-# MAGIC   * **Azure Event Hubs Connector for Databricks** - Maven coordinates `com.microsoft.azure:azure-eventhubs-spark_2.12:2.3.16`
-# MAGIC * **Part 1 Notebook Run to generate and process the data** (this can be found [here](https://databricks.com/notebooks/iiot/iiot-end-to-end-part-1.html)). Ensure the following tables have been created:
-# MAGIC   * **turbine_maintenance** - Maintenance dates for each Wind Turbine
-# MAGIC   * **turbine_power** - Hourly power output for each Wind Turbine
-# MAGIC   * **turbine_enriched** - Hourly turbine sensor readinigs (RPM, Angle) enriched with weather readings (temperature, wind speed/direction, humidity)
-# MAGIC   * **gold_readings** - Combined view containing all 3 tables
+# MAGIC
+# MAGIC #### Databricks Configuration Required
+# MAGIC * Databricks Cluster running **DBR 11.3 ML**
 
 # COMMAND ----------
 
@@ -66,10 +63,10 @@ spark.sql(f'USE {DB}')
 
 # MAGIC %md ## 1. Feature Engineering
 # MAGIC In order to predict power output 6 hours ahead, we need to first time-shift our data to create our label column. We can do this easily using Spark Window partitioning. 
-# MAGIC 
+# MAGIC
 # MAGIC In order to predict remaining life, we need to backtrace the remaining life from the maintenance events. We can do this easily using cross joins. The following diagram illustrates the ML Feature Engineering pipeline:
-# MAGIC 
-# MAGIC <img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/ml_pipeline.png" width=800>
+# MAGIC
+# MAGIC <img src="files/tables/vr/iiot_ml_pipeline.png" width=800>
 
 # COMMAND ----------
 
@@ -84,7 +81,7 @@ spark.sql(f'USE {DB}')
 # MAGIC SELECT date, deviceid, ifnull(min(datediff_last),0) AS age, ifnull(min(datediff_next),0) AS remaining_life
 # MAGIC FROM maintenance_dates 
 # MAGIC GROUP BY deviceid, date;
-# MAGIC 
+# MAGIC
 # MAGIC -- Calculate the power 6 hours ahead using Spark Windowing and build a feature_table to feed into our ML models
 # MAGIC CREATE OR REPLACE VIEW feature_table AS
 # MAGIC SELECT r.*, age, remaining_life,
@@ -105,22 +102,22 @@ spark.sql(f'USE {DB}')
 # COMMAND ----------
 
 # MAGIC %md ## 2. Model Training
-# MAGIC 
+# MAGIC
 # MAGIC The next step is to train lots of different models using different algorithms and parameters in search for the one that optimally solves our business problem.
-# MAGIC 
+# MAGIC
 # MAGIC That's where the **Spark** + **HyperOpt** + **MLflow** framework can be leveraged to easily distribute the training proccess across a cluster, efficiently optimize hyperparameters and track all experiments in order to quickly evaluate many models, choose the best one and guarantee its reproducibility.<br><br>
-# MAGIC 
+# MAGIC
 # MAGIC ![](/files/shared_uploads/victor.rodrigues@databricks.com/ml_2.jpg)
 
 # COMMAND ----------
 
 # MAGIC %md ### 2a. Define Experiment for Distributed Model Autotuning with Tracking
-# MAGIC 
+# MAGIC
 # MAGIC Benefits:
 # MAGIC - Pure Python & Pandas: easy to develop, test
 # MAGIC - Continue using your favorite libraries
 # MAGIC - Simply assume you're working with a Pandas DataFrame for a single device
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://github.com/PawaritL/data-ai-world-tour-dsml-jan-2022/blob/main/pandas-udf-workflow.png?raw=true" width=40%>
 
 # COMMAND ----------
@@ -213,20 +210,20 @@ display(preds.groupBy('date','deviceid').agg(mean('power_6_hours_ahead'), mean('
 # COMMAND ----------
 
 # MAGIC %md **Automated Model Tracking in Databricks**
-# MAGIC 
+# MAGIC
 # MAGIC As you train the models, notice how Databricks-managed MLflow automatically tracks each run in the "Runs" tab of the notebook. You can open each run and view the parameters, metrics, models and model artifacts that are captured by MLflow Autologging. For XGBoost Regression models, MLflow tracks: 
 # MAGIC 1. Any model parameters (alpha, colsample, learning rate, etc.) passed to the `params` variable
 # MAGIC 2. Metrics specified in `evals` (RMSE by default)
 # MAGIC 3. The trained XGBoost model file
 # MAGIC 4. Feature importances
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/iiot_mlflow_tracking.gif" width=800>
 
 # COMMAND ----------
 
 # MAGIC %md ### 2c. Remaining Life
 # MAGIC Our second model predicts the remaining useful life of each Wind Turbine based on the current operating conditions. We have historical maintenance data that indicates when a replacement activity occured - this will be used to calculate the remaining life as our training label. 
-# MAGIC 
+# MAGIC
 # MAGIC Once again, we train an XGBoost model for each Wind Turbine to predict the remaining life given a set of operating parameters and weather conditions
 
 # COMMAND ----------
@@ -264,11 +261,11 @@ display(preds.groupBy('date').agg(mean('remaining_life'),mean('remaining_life_pr
 # COMMAND ----------
 
 # MAGIC %md ## 3. Model Deployment
-# MAGIC 
+# MAGIC
 # MAGIC After choosing a model that best fits our needs, we can then go ahead and kick off its operationalization proccess.
-# MAGIC 
+# MAGIC
 # MAGIC The first step is to register it to the **Model Registry**, where we can version, manage its life cycle with an workflow and track/audit all changes.<br><br>
-# MAGIC 
+# MAGIC
 # MAGIC ![](/files/shared_uploads/victor.rodrigues@databricks.com/ml_3.jpg)
 
 # COMMAND ----------
@@ -323,11 +320,11 @@ client.transition_model_version_stage(
 # COMMAND ----------
 
 # MAGIC %md ## 4. Model Inference
-# MAGIC 
+# MAGIC
 # MAGIC We can now score this model in batch, streaming or via REST API calls (in case we choose to enable Serverless Model Serving) so we can consume it from any other applications or tools, like Power BI.
-# MAGIC 
+# MAGIC
 # MAGIC In this example, we'll batch score new data in order to make decisions about our production.<br><br>
-# MAGIC 
+# MAGIC
 # MAGIC ![](/files/shared_uploads/victor.rodrigues@databricks.com/ml_4.jpg)
 
 # COMMAND ----------
@@ -392,15 +389,15 @@ display(spark.table('turbine_life_predictions'))
 
 # COMMAND ----------
 
-# MAGIC %md ## 5. Asset Optimization
+# MAGIC %md ## 5. Operational Optimization
 # MAGIC We can now identify the optimal operating conditions for maximizing power output while also maximizing asset useful life. 
-# MAGIC 
+# MAGIC
 # MAGIC \\(Revenue = Price\displaystyle\sum_{d=1}^{365} Power_d\\)
-# MAGIC 
+# MAGIC
 # MAGIC \\(Cost = {365 \over Life} Price \displaystyle\sum_{h=1}^{24} Power_h \\)
-# MAGIC 
+# MAGIC
 # MAGIC \\(Profit = Revenue - Cost\\)
-# MAGIC 
+# MAGIC
 # MAGIC \\(Power_t\\) and \\(Life\\) will be calculated by scoring many different setting values. The results can be visualized to identify the optimal setting that yields the highest profit.
 
 # COMMAND ----------
@@ -442,7 +439,5 @@ display(opt_df)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Data Serving and Visualization
-# MAGIC Now that our models are created and the data is scored, we can use Databricks SQL Warehouses with Power BI to perform data warehousing and analyltic reporting to generate a report like the one below without needing to move and replicate your data.
-# MAGIC 
-# MAGIC <br><img src="https://sguptasa.blob.core.windows.net/random/iiot_blog/PBI_report.gif" width=800>
+# MAGIC ## Conclusion
+# MAGIC Now that our models are created and the data is scored, we are now ready to build our Predictive Maintenance dashboard to track the main KPIs and status of our entire Wind Turbine Farm in <a href="/sql/dashboards/f27ba14b-1be9-4dbf-944b-f40fbbb47aa5">DBSQL</a> and/or <a href="https://vorodrigues.grafana.net/d/acef080c-3e23-4d11-8e1e-8109646c7c76/wind-turbines-monitoring"> Grafana</a>.

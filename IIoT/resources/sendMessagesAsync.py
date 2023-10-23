@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import datetime
 import json
-from random import random, choice
+from random import random, choice, randint
 from time import sleep
 from azure.iot.device.aio import IoTHubDeviceClient
 from azure.iot.device import Message
@@ -22,10 +22,12 @@ def getConnStr(deviceId):
 
 def turbineMessage(deviceId):
     m = {}
-    m['deviceId'] = deviceId
+    # m['deviceId'] = deviceId
+    m['deviceId'] = 'WindTurbine-'+str(randint(1,500))
     m['timestamp'] = datetime.datetime.now()
     m['rpm'] = 7 * (1 + 0.6 * (-1 + 2 * random()))
     m['angle'] = 6 * (1 + 0.6 * (-1 + 2 * random()))
+    m['power'] = 150 * (1 + 0.3 * (-1 + 2 * random()))
     return Message(json.dumps(m, default=str))
     
 
