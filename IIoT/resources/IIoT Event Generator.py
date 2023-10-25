@@ -11,9 +11,9 @@ def sendMessagesAsyncThread(message_type, device, messages_to_send):
 # COMMAND ----------
 
 devices = [
-  {'type':'turbine', 'id':'WindTurbine-000001', 'n':10000},
-  {'type':'turbine', 'id':'WindTurbine-000002', 'n':10000},
-  {'type':'weather', 'id':'WeatherCapture', 'n':10000}
+  {'type':'turbine', 'id':'WindTurbine-000001', 'n':20000},
+  {'type':'turbine', 'id':'WindTurbine-000002', 'n':20000},
+  {'type':'weather', 'id':'WeatherCapture', 'n':20000}
 ]
 
 # COMMAND ----------

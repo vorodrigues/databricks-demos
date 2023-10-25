@@ -7,12 +7,7 @@ for src in ['weather_raw', 'weather_agg', 'turbine_raw_3', 'turbine_agg_3', 'tur
   spark.sql(f'CREATE TABLE vr_iiot.dev.{dst} PARTITIONED BY (date) AS SELECT * FROM vr_iiot.backup.{src}')
   spark.sql(f'ALTER SHARE vr_iiot_share ADD TABLE vr_iiot.dev.{dst}')
 
-# print('Resetting checkpoint...')
-# dbutils.fs.rm('s3://databricks-vr/iiot/checkpoints/', True)
-
-# COMMAND ----------
-
-# print('Resetting checkpoint...')
+print('Resetting checkpoint...')
 dbutils.fs.rm('s3://databricks-vr/iiot/checkpoints/', True)
 
 # COMMAND ----------

@@ -67,9 +67,10 @@
 # MAGIC
 # MAGIC To simplify this demo, we'll consider that an external system is periodically sending data into our blob storage (S3/ADLS/GCS):
 # MAGIC
-# MAGIC - Turbine data *(location, model, identifier etc)*
-# MAGIC - Wind turbine sensors, every sec *(energy produced, vibration, typically in streaming)*
-# MAGIC - Turbine status over time, labelled by our analyst team *(historical data to train on model on)*
+# MAGIC - Turbine data *(location, model, identifier – typically a SCD)*
+# MAGIC - Wind turbine sensors, every sec *(energy produced, rotation speed – typically in streaming)*
+# MAGIC - Weather *(humidity, temperature, ... – typically in streaming)*
+# MAGIC - Maintenance data *(when a service was executed on a equipment)*
 # MAGIC
 # MAGIC *Note that at a technical level, our data could come from any source. Databricks can ingest data from any system (SalesForce, Fivetran, queuing message like kafka, blob storage, SQL & NoSQL databases...).*
 # MAGIC
@@ -77,7 +78,23 @@
 
 # COMMAND ----------
 
+# MAGIC %md ### Turbine data
+
+# COMMAND ----------
+
+# MAGIC %sql select count(distinct deviceId) as devices from vr_iiot.dev.devices
+
+# COMMAND ----------
+
+# MAGIC %sql select * from vr_iiot.dev.devices
+
+# COMMAND ----------
+
 # MAGIC %md ### Turbine sensors
+
+# COMMAND ----------
+
+# MAGIC %sql select count(*) as readings, count(distinct deviceId) as devices from vr_iiot.dev.turbine_raw
 
 # COMMAND ----------
 
