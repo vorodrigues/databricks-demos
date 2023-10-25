@@ -22,11 +22,14 @@ def getConnStr(deviceId):
 
 def turbineMessage(deviceId):
     m = {}
-    # m['deviceId'] = deviceId
-    m['deviceId'] = 'WindTurbine-'+str(randint(1,500))
+    deviceId = 'WindTurbine-'+str(randint(1,500))
+    m['deviceId'] = deviceId
     m['timestamp'] = datetime.datetime.now()
     m['rpm'] = 7 * (1 + 0.6 * (-1 + 2 * random()))
-    m['angle'] = 6 * (1 + 0.6 * (-1 + 2 * random()))
+    if deviceId == 'WindTurbine-6':
+        m['angle'] = 12 * (1 + 0.6 * (-1 + 2 * random()))
+    else:
+        m['angle'] = 6 * (1 + 0.6 * (-1 + 2 * random()))
     m['power'] = 150 * (1 + 0.3 * (-1 + 2 * random()))
     return Message(json.dumps(m, default=str))
     
