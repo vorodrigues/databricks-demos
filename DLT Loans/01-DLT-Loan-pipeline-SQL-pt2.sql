@@ -114,4 +114,4 @@ AS SELECT sum(count) AS tot_count, country_code FROM stream(live.cleaned_new_txs
 -- MAGIC
 -- MAGIC <img width="500" src="https://github.com/QuentinAmbard/databricks-demo/raw/main/retail/resources/images/retail-dlt-data-quality-dashboard.png">
 -- MAGIC
--- MAGIC <a href="/sql/dashboards/b732d677-477b-4b5e-84b6-672174440e7d" target="_blank">Data Quality Dashboard example</a>
+-- MAGIC <a href="/sql/dashboards/6f73dd1b-17b1-49d0-9a11-b3772a2c3357" target="_blank">Data Quality Dashboard example</a>

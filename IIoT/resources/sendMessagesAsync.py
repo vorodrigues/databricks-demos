@@ -10,11 +10,11 @@ from azure.iot.device import Message
 
 def getConnStr(deviceId):
     if deviceId == 'WindTurbine-000001':
-        conn_str = 'HostName=fe-shared-sa-mfg-iothub.azure-devices.net;DeviceId=WindTurbine-000001;SharedAccessKey=um6+VUtT24ODmEOp/UrbEuwSO8OL2/NZzSPJD3FTUIw='
+        conn_str = 'HostName=vr-iothub.azure-devices.net;DeviceId=WindTurbine-000001;SharedAccessKey=mNk1xK48B8I0cXxZco9pkr4VPNQvgldtbAIoTMpuMGQ='
     elif deviceId == 'WindTurbine-000002':
-        conn_str = 'HostName=fe-shared-sa-mfg-iothub.azure-devices.net;DeviceId=WindTurbine-000002;SharedAccessKey=sPJs4/TgyJp3qR+jDnlM4bP8h6QOn8Y86ug9yVljrkk='
+        conn_str = 'HostName=vr-iothub.azure-devices.net;DeviceId=WindTurbine-000002;SharedAccessKey=7hRgjzjpj+gZAC3yJtYPsU17tqDV3gjqRAIoTJNrJWI='
     elif deviceId == 'WeatherCapture':
-        conn_str = 'HostName=fe-shared-sa-mfg-iothub.azure-devices.net;DeviceId=WeatherCapture;SharedAccessKey=fUw8CxkBlzYnioTrZYQOHmpJe/k+COw0d0XIAn3r+s8='
+        conn_str = 'HostName=vr-iothub.azure-devices.net;DeviceId=WeatherCapture;SharedAccessKey=kYwULYjuEf7tMUe12LxxpJtu6Ox9NbvIjAIoTAgG0Ms='
     else:
         raise Exception('Device ID not found')
     return conn_str

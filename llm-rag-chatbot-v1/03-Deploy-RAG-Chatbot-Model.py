@@ -78,7 +78,7 @@ except:
             "provider": "mosaicml",
             "mosaicml_config": {
                 "mosaicml_api_key": dbutils.secrets.get(scope="dbdemos", key="mosaic_ml_api_key")
-            }
+            },,jhgfghj, 
         }
     ))
 
@@ -271,59 +271,6 @@ except:
 
 # COMMAND ----------
 
-# MAGIC %run ./_resources/00-init $catalog=vr_demo $db=chatbot $reset_all_data=false
-
-# COMMAND ----------
-
-catalog = 'vr_demo'
-db = 'chatbot'
-
-# COMMAND ----------
-
-#init MLflow experiment
-import mlflow
-from mlflow import gateway
-# init_experiment_for_batch("llm-chatbot-rag-VR", "rag-model-VR")
-
-gateway.set_gateway_uri(gateway_uri="databricks")
-#define our embedding route name, this is the endpoint we'll call for our embeddings
-mosaic_embeddings_route_name = "mosaicml-instructor-xl-embeddings-VR"
-
-try:
-    route = gateway.get_route(mosaic_embeddings_route_name)
-except:
-    # Create a route for embeddings with MosaicML
-    print(f"Creating the route {mosaic_embeddings_route_name}")
-    print(gateway.create_route(
-        name=mosaic_embeddings_route_name,
-        route_type="llm/v1/embeddings",
-        model={
-            "name": "instructor-xl",
-            "provider": "mosaicml",
-            "mosaicml_config": {
-                "mosaicml_api_key": dbutils.secrets.get(scope="dbdemos", key="mosaic_ml_api_key")
-            }
-        }
-    ))
-
-# COMMAND ----------
-
-# DBTITLE 1,Get our model from Unity Catalog
-import mlflow
-from mlflow import MlflowClient
-
-#Enable Unity Catalog with MLflow registry
-mlflow.set_registry_uri('databricks-uc')
-model_name = f"{catalog}.{db}.chatbot-vr"
-
-client = MlflowClient()
-
-#Get the model
-latest_model = client.get_model_version_by_alias(model_name, "prod")
-print(f"Our model is already deployed on UC: {model_name}")
-
-# COMMAND ----------
-
 #Helper for the endpoint rest api, see details in _resources/00-init
 serving_client = EndpointApiClient()
 #Start the endpoint using the REST API (you can do it using the UI directly)
@@ -341,19 +288,6 @@ serving_client.create_endpoint_if_not_exists("chatbot_rag-VR",
 # MAGIC Our endpoint is now deployed! You can directly [open it from the UI](#/mlflow/endpoints/dbdemos_chatbot_rag) and visualize its performance!
 # MAGIC
 # MAGIC Let's run a REST query to try it in Python. As you can see, we send the `test sentence` doc and it returns an embedding representing our document.
-
-# COMMAND ----------
-
-requests.post(f"https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints/chatbot_rag-VR/invocations", 
-                       json={"dataframe_split": {"data": [question]}}, 
-                       headers=serving_client.headers).json()
-
-# COMMAND ----------
-
-serving_client.query_inference_endpoint(
-  endpoint_name = "https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints/chatbot_rag-VR/invocations", 
-  data = {"dataframe_split": {"data": [question]}}
-  )
 
 # COMMAND ----------
 

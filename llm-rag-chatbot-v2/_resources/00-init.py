@@ -4,329 +4,84 @@
 # MAGIC
 # MAGIC Do not edit the notebook, it contains import and helpers for the demo
 # MAGIC
-# MAGIC <!-- Collect usage data (view). Remove it to disable collection. View README for more details.  -->
-# MAGIC <img width="1px" src="https://www.google-analytics.com/collect?v=1&gtm=GTM-NKQ8TT7&tid=UA-163989034-1&aip=1&t=event&ec=dbdemos&ea=VIEW&dp=%2F_dbdemos%2Fdata-science%2Fllm-rag-chatbot%2F_resources%2F00-init&cid=1444828305810485&uid=4208775050108475">
+# MAGIC <!-- Collect usage data (view). Remove it to disable collection or disable tracker during installation. View README for more details.  -->
+# MAGIC <img width="1px" src="https://ppxrzfxige.execute-api.us-west-2.amazonaws.com/v1/analytics?category=data-science&org_id=local&notebook=%2F_resources%2F00-init&demo_name=llm-rag-chatbot&event=VIEW&path=%2F_dbdemos%2Fdata-science%2Fllm-rag-chatbot%2F_resources%2F00-init&version=1">
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "hive_metastore", "Catalog")
-dbutils.widgets.text("db", "dbdemos_llm", "Database")
+# MAGIC %run ./config
+
+# COMMAND ----------
+
 dbutils.widgets.text("reset_all_data", "false", "Reset Data")
 reset_all_data = dbutils.widgets.get("reset_all_data") == "true"
 
-catalog = dbutils.widgets.get("catalog")
-db = dbutils.widgets.get("db")
-db_name = db
-
-import pyspark.sql.functions as F
-from pyspark.sql.functions import col, udf, length, pandas_udf
-
-
 # COMMAND ----------
 
-# MAGIC %run ./00-global-setup $reset_all_data=$reset_all_data $catalog=$catalog $db=$db
-
-# COMMAND ----------
-
-import gc
 from pyspark.sql.functions import pandas_udf
 import pandas as pd
-from typing import Iterator
-import torch
-
-folder =  "/dbdemos/product/llm/databricks-doc"
-
-# Cache our model to dbfs to avoid loading them everytime
-hugging_face_cache = "/dbfs"+folder+"/cache/hf"
-
+import pyspark.sql.functions as F
+from pyspark.sql.functions import col, udf, length, pandas_udf
 import os
-os.environ['TRANSFORMERS_CACHE'] = hugging_face_cache
-
-# COMMAND ----------
-
-if reset_all_data or is_folder_empty(folder):
-  if reset_all_data and folder.startswith("/dbdemos/product/llm"):
-    dbutils.fs.rm(folder, True)
-  download_file_from_git('/dbfs'+folder, "databricks-demos", "dbdemos-dataset", "/llm/databricks-documentation")
-else:
-  print("data already existing. Run with reset_all_data=true to force a data cleanup for your local demo.")
-
-# COMMAND ----------
-
-import requests
-import time
-import re
-
-#Helper to send REST queries. This will try to use an existing warehouse or create a new one.
-class SQLStatementAPI:
-    def __init__(self, warehouse_name = "dbdemos-shared-endpoint", catalog = "dbdemos", schema = "openai_demo"):
-        self.base_url =dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()
-        self.token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-        self.headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
-        username = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
-        username = re.sub("[^A-Za-z0-9]", '_', username)
-        warehouse = self.get_or_create_endpoint(username, warehouse_name)
-        #Try to create it
-        if warehouse is None:
-          raise Exception(f"Couldn't find or create a warehouse named {warehouse_name}. If you don't have warehouse creation permission, please change the name to an existing one or ask an admin to create the warehouse with this name.")
-        self.warehouse_id = warehouse['warehouse_id']
-        self.catalog = catalog
-        self.schema = schema
-        self.wait_timeout = "50s"
-
-    def get_or_create_endpoint(self, username, endpoint_name):
-        ds = self.get_demo_datasource(endpoint_name)
-        if ds is not None:
-            return ds
-        def get_definition(serverless, name):
-            return {
-                "name": name,
-                "cluster_size": "Small",
-                "min_num_clusters": 1,
-                "max_num_clusters": 1,
-                "tags": {
-                    "project": "dbdemos"
-                },
-                "warehouse_type": "PRO",
-                "spot_instance_policy": "COST_OPTIMIZED",
-                "enable_photon": "true",
-                "enable_serverless_compute": serverless,
-                "channel": { "name": "CHANNEL_NAME_CURRENT" }
-            }
-        def try_create_endpoint(serverless):
-            w = self._post("api/2.0/sql/warehouses", get_definition(serverless, endpoint_name))
-            if "message" in w and "already exists" in w['message']:
-                w = self._post("api/2.0/sql/warehouses", get_definition(serverless, endpoint_name+"-"+username))
-            if "id" in w:
-                return w
-            print(f"WARN: Couldn't create endpoint with serverless = {endpoint_name} and endpoint name: {endpoint_name} and {endpoint_name}-{username}. Creation response: {w}")
-            return None
-
-        if try_create_endpoint(True) is None:
-            #Try to fallback with classic endpoint?
-            try_create_endpoint(False)
-        ds = self.get_demo_datasource(endpoint_name)
-        if ds is not None:
-            return ds
-        print(f"ERROR: Couldn't create endpoint.")
-        return None      
-      
-    def get_demo_datasource(self, datasource_name):
-        data_sources = self._get("api/2.0/preview/sql/data_sources")
-        for source in data_sources:
-            if source['name'] == datasource_name:
-                return source
-        """
-        #Try to fallback to an existing shared endpoint.
-        for source in data_sources:
-            if datasource_name in source['name'].lower():
-                return source
-        for source in data_sources:
-            if "dbdemos-shared-endpoint" in source['name'].lower():
-                return source
-        for source in data_sources:
-            if "shared-sql-endpoint" in source['name'].lower():
-                return source
-        for source in data_sources:
-            if "shared" in source['name'].lower():
-                return source"""
-        return None
-      
-    def execute_sql(self, sql):
-      x = self._post("api/2.0/sql/statements", {"statement": sql, "warehouse_id": self.warehouse_id, "catalog": self.catalog, "schema": self.schema, "wait_timeout": self.wait_timeout})
-      return self.result_as_df(x, sql)
-    
-    def wait_for_statement(self, results, timeout = 600):
-      sleep_time = 3
-      i = 0
-      while i < timeout:
-        if results['status']['state'] not in ['PENDING', 'RUNNING']:
-          return results
-        time.sleep(sleep_time)
-        i += sleep_time
-        results = self._get(f"api/2.0/sql/statements/{results['statement_id']}")
-      self._post(f"api/2.0/sql/statements/{results['statement_id']}/cancel")
-      return self._get(f"api/2.0/sql/statements/{results['statement_id']}")
-        
-      
-    def result_as_df(self, results, sql):
-      results = self.wait_for_statement(results)
-      if results['status']['state'] != 'SUCCEEDED':
-        print(f"Query error: {results}")
-        return pd.DataFrame([[results['status']['state'],{results['status']['error']['message']}, results]], columns = ['state', 'message', 'results'])
-      if results["manifest"]['schema']['column_count'] == 0:
-        return pd.DataFrame([[results['status']['state'], sql]], columns = ['state', 'sql'])
-      cols = [c['name'] for c in results["manifest"]['schema']['columns']]
-      results = results["result"]["data_array"] if "data_array" in results["result"] else []
-      return pd.DataFrame(results, columns = cols)
-
-    def _get(self, uri, data = {}, allow_error = False):
-        r = requests.get(f"{self.base_url}/{uri}", params=data, headers=self.headers)
-        return self._process(r, allow_error)
-
-    def _post(self, uri, data = {}, allow_error = False):
-        return self._process(requests.post(f"{self.base_url}/{uri}", json=data, headers=self.headers), allow_error)
-
-    def _put(self, uri, data = {}, allow_error = False):
-        return self._process(requests.put(f"{self.base_url}/{uri}", json=data, headers=self.headers), allow_error)
-
-    def _delete(self, uri, data = {}, allow_error = False):
-        return self._process(requests.delete(f"{self.base_url}/{uri}", json=data, headers=self.headers), allow_error)
-
-    def _process(self, r, allow_error = False):
-      if r.status_code == 500 or r.status_code == 403 or not allow_error:
-        r.raise_for_status()
-      return r.json()
-    
-#sql_api = SQLStatementAPI(warehouse_name = "dbdemos-shared-endpoint-test", catalog = "dbdemos", schema = "openai_demo")
-#sql_api.execute_sql("select 'test'")
-
-# COMMAND ----------
-
-import warnings
-
-with warnings.catch_warnings():
-    warnings.simplefilter('ignore', SyntaxWarning)
-    warnings.simplefilter('ignore', DeprecationWarning)
-    warnings.simplefilter('ignore', UserWarning)
-
-# COMMAND ----------
-
-import urllib
-import json
 import mlflow
-import time
-
-class EndpointApiClient:
-    def __init__(self):
-        self.base_url =dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()
-        self.token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-        self.headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
-
-    def create_inference_endpoint(self, endpoint_name, served_models):
-        data = {"name": endpoint_name, "config": {"served_models": served_models}}
-        return self._post("api/2.0/serving-endpoints", data)
-
-    def get_inference_endpoint(self, endpoint_name):
-        return self._get(f"api/2.0/serving-endpoints/{endpoint_name}", allow_error=True)
-      
-      
-    def inference_endpoint_exists(self, endpoint_name):
-      ep = self.get_inference_endpoint(endpoint_name)
-      if 'error_code' in ep and ep['error_code'] == 'RESOURCE_DOES_NOT_EXIST':
-          return False
-      if 'error_code' in ep and ep['error_code'] != 'RESOURCE_DOES_NOT_EXIST':
-          raise Exception(f"endpoint exists ? {ep}")
-      return True
-
-    def create_endpoint_if_not_exists(self, endpoint_name, model_name, model_version, workload_size, scale_to_zero_enabled=True, wait_start=True, environment_vars = {}):
-      models = [{
-            "model_name": model_name,
-            "model_version": model_version,
-            "workload_size": workload_size,
-            "scale_to_zero_enabled": scale_to_zero_enabled,
-            "environment_vars": environment_vars
-      }]
-      if not self.inference_endpoint_exists(endpoint_name):
-        r = self.create_inference_endpoint(endpoint_name, models)
-      #Make sure we have the proper version deployed
-      else:
-        ep = self.get_inference_endpoint(endpoint_name)
-        if 'pending_config' in ep:
-            self.wait_endpoint_start(endpoint_name)
-            ep = self.get_inference_endpoint(endpoint_name)
-        if 'pending_config' in ep:
-            model_deployed = ep['pending_config']['served_models'][0]
-            print(f"Error with the model deployed: {model_deployed} - state {ep['state']}")
-        else:
-            model_deployed = ep['config']['served_models'][0]
-        if model_deployed['model_version'] != model_version:
-          print(f"Current model is version {model_deployed['model_version']}. Updating to {model_version}...")
-          u = self.update_model_endpoint(endpoint_name, {"served_models": models})
-      if wait_start:
-        self.wait_endpoint_start(endpoint_name)
-      
-      
-    def list_inference_endpoints(self):
-        return self._get("api/2.0/serving-endpoints")
-
-    def update_model_endpoint(self, endpoint_name, conf):
-        return self._put(f"api/2.0/serving-endpoints/{endpoint_name}/config", conf)
-
-    def delete_inference_endpoint(self, endpoint_name):
-        return self._delete(f"api/2.0/serving-endpoints/{endpoint_name}")
-
-    def wait_endpoint_start(self, endpoint_name):
-      i = 0
-      while self.get_inference_endpoint(endpoint_name)['state']['config_update'] == "IN_PROGRESS" and i < 500:
-        if i % 10 == 0:
-          print("waiting for endpoint to build model image and start...")
-        time.sleep(10)
-        i += 1
-      ep = self.get_inference_endpoint(endpoint_name)
-      if ep['state'].get("ready", None) != "READY":
-        print(f"Error creating the endpoint: {ep}")
-        
-      
-    # Making predictions
-
-    def query_inference_endpoint(self, endpoint_name, data):
-        return self._post(f"realtime-inference/{endpoint_name}/invocations", data)
-
-    # Debugging
-
-    def get_served_model_build_logs(self, endpoint_name, served_model_name):
-        return self._get(
-            f"api/2.0/serving-endpoints/{endpoint_name}/served-models/{served_model_name}/build-logs"
-        )
-
-    def get_served_model_server_logs(self, endpoint_name, served_model_name):
-        return self._get(
-            f"api/2.0/serving-endpoints/{endpoint_name}/served-models/{served_model_name}/logs"
-        )
-
-    def get_inference_endpoint_events(self, endpoint_name):
-        return self._get(f"api/2.0/serving-endpoints/{endpoint_name}/events")
-
-    def _get(self, uri, data = {}, allow_error = False):
-        r = requests.get(f"{self.base_url}/{uri}", params=data, headers=self.headers)
-        return self._process(r, allow_error)
-
-    def _post(self, uri, data = {}, allow_error = False):
-        return self._process(requests.post(f"{self.base_url}/{uri}", json=data, headers=self.headers), allow_error)
-
-    def _put(self, uri, data = {}, allow_error = False):
-        return self._process(requests.put(f"{self.base_url}/{uri}", json=data, headers=self.headers), allow_error)
-
-    def _delete(self, uri, data = {}, allow_error = False):
-        return self._process(requests.delete(f"{self.base_url}/{uri}", json=data, headers=self.headers), allow_error)
-
-    def _process(self, r, allow_error = False):
-      if r.status_code == 500 or r.status_code == 403 or not allow_error:
-        print(r.text)
-        r.raise_for_status()
-      return r.json()
+from mlflow import MlflowClient
 
 # COMMAND ----------
 
-def display_answer(question, answer):
-  prompt = answer[0]["prompt"].replace('\n', '<br/>')
-  answer = answer[0]["answer"].replace('\n', '<br/>').replace('Answer: ', '')
-  #Tune the message with the user running the notebook. In real workd example we'd have a table with the customer details. 
-  displayHTML(f"""
-              <div style="float: right; width: 45%;">
-                <h3>Debugging:</h3>
-                <div style="border-radius: 10px; background-color: #ebebeb; padding: 10px; box-shadow: 2px 2px 2px #F7f7f7; margin-bottom: 10px; color: #363636"><strong>Prompt sent to the model:</strong><br/><i>{prompt}</i></div>
-              </div>
-              <h3>Chatbot:</h3>
-              <div style="border-radius: 10px; background-color: #e3f6fc; padding: 10px; width: 45%; box-shadow: 2px 2px 2px #F7f7f7; margin-bottom: 10px; margin-left: 40px; font-size: 14px">
-                <img style="float: left; width:40px; margin: -10px 5px 0px -10px" src="https://github.com/databricks-demos/dbdemos-resources/blob/main/images/product/chatbot-rag/robot.png?raw=true"/>Hey! I'm your Databricks assistant. How can I help?
-              </div>
-              <div style="border-radius: 10px; background-color: #c2efff; padding: 10px; width: 45%; box-shadow: 2px 2px 2px #F7f7f7; margin-bottom: 10px; font-size: 14px">{question}</div>
-                <div style="border-radius: 10px; background-color: #e3f6fc; padding: 10px;  width: 45%; box-shadow: 2px 2px 2px #F7f7f7; margin-bottom: 10px; margin-left: 40px; font-size: 14px">
-                <img style="float: left; width:40px; margin: -10px 5px 0px -10px" src="https://github.com/databricks-demos/dbdemos-resources/blob/main/images/product/chatbot-rag/robot.png?raw=true"/> {answer}
-                </div>
-        """)
+import re
+min_required_version = "11.3"
+version_tag = spark.conf.get("spark.databricks.clusterUsageTags.sparkVersion")
+version_search = re.search('^([0-9]*\.[0-9]*)', version_tag)
+assert version_search, f"The Databricks version can't be extracted from {version_tag}, shouldn't happen, please correct the regex"
+current_version = float(version_search.group(1))
+assert float(current_version) >= float(min_required_version), f'The Databricks version of the cluster must be >= {min_required_version}. Current version detected: {current_version}'
+
+# COMMAND ----------
+
+#dbdemos__delete_this_cell
+#force the experiment to the field demos one. Required to launch as a batch
+def init_experiment_for_batch(demo_name, experiment_name):
+  pat_token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
+  url = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()
+  import requests
+  xp_root_path = f"/dbdemos/experiments/{demo_name}"
+  r = requests.post(f"{url}/api/2.0/workspace/mkdirs", headers = {"Accept": "application/json", "Authorization": f"Bearer {pat_token}"}, json={ "path": xp_root_path})
+  mlflow.set_experiment(f"{xp_root_path}/{experiment_name}")
+
+# COMMAND ----------
+
+if reset_all_data:
+  print(f'clearing up db {dbName}')
+  spark.sql(f"DROP DATABASE IF EXISTS `{dbName}` CASCADE")
+
+# COMMAND ----------
+
+def use_and_create_db(catalog, dbName, cloud_storage_path = None):
+  print(f"USE CATALOG `{catalog}`")
+  spark.sql(f"USE CATALOG `{catalog}`")
+  spark.sql(f"""create database if not exists `{dbName}` """)
+
+assert catalog not in ['hive_metastore', 'spark_catalog']
+#If the catalog is defined, we force it to the given value and throw exception if not.
+if len(catalog) > 0:
+  current_catalog = spark.sql("select current_catalog()").collect()[0]['current_catalog()']
+  if current_catalog != catalog:
+    catalogs = [r['catalog'] for r in spark.sql("SHOW CATALOGS").collect()]
+    if catalog not in catalogs:
+      spark.sql(f"CREATE CATALOG IF NOT EXISTS {catalog}")
+      if catalog == 'dbdemos':
+        spark.sql(f"ALTER CATALOG {catalog} OWNER TO `account users`")
+  use_and_create_db(catalog, dbName)
+
+if catalog == 'dbdemos':
+  try:
+    spark.sql(f"GRANT CREATE, USAGE on DATABASE {catalog}.{dbName} TO `account users`")
+    spark.sql(f"ALTER SCHEMA {catalog}.{dbName} OWNER TO `account users`")
+  except Exception as e:
+    print("Couldn't grant access to the schema to all users:"+str(e))    
+
+print(f"using catalog.database `{catalog}`.`{dbName}`")
+spark.sql(f"""USE `{catalog}`.`{dbName}`""")    
 
 # COMMAND ----------
 
@@ -346,80 +101,213 @@ def display_answer(question, answer):
 
 # COMMAND ----------
 
-def catalog_exists(catalog):
-    try:
-        vsc.get_catalog(catalog)
-        return True
-    except Exception as e:
-        if 'CATALOG_DOES_NOT_EXIST' not in str(e):
-            print(f'Unexpected error {e}. Is The preview enabled? Try deleting the vs catalog: vsc.delete_catalog("{catalog}")')
-            raise e
-        return False
+# Helper function
+def get_latest_model_version(model_name):
+    mlflow_client = MlflowClient()
+    latest_version = 1
+    for mv in mlflow_client.search_model_versions(f"name='{model_name}'"):
+        version_int = int(mv.version)
+        if version_int > latest_version:
+            latest_version = version_int
+    return latest_version
 
 # COMMAND ----------
 
-def index_exists(index_full_name):
-    try:
-        vsc.get_index(index_full_name).describe()
-        return True
-    except Exception as e:
-        if 'RESOURCE_DOES_NOT_EXIST' not in str(e):
-            print(f'Unexpected error describing the index. This could be a permission issue. Try deleting it? vsc.delete_index({index_full_name})')
-            raise e
-        return False
-
-# COMMAND ----------
-
-def wait_for_index_to_be_ready(index_name):
+# DBTITLE 1,endpoint
+import time
+def wait_for_vs_endpoint_to_be_ready(vsc, vs_endpoint_name):
   for i in range(180):
-    idx = vsc.get_index(index_name).describe()
-    if idx['index_status']['state'] == 'NOT_READY':
-      if i % 20 == 0: print(f"Waiting for index to build, this can take a few min... {idx['index_status']['message']}")
+    endpoint = vsc.get_endpoint(vs_endpoint_name)
+    status = endpoint.get("endpoint_status", endpoint.get("status"))["state"].upper()
+    if "ONLINE" in status:
+      return endpoint
+    elif "PROVISIONING" in status or i <6:
+      if i % 20 == 0: 
+        print(f"Waiting for endpoint to be ready, this can take a few min... {endpoint}")
       time.sleep(10)
-    elif idx['index_status']['state'] != 'READY':
-        raise Exception(f'''Error with the index - this shouldn't happen. DLT pipeline might have been killed.\n Please delete it and re-run the previous cell: vsc.delete_index("{index_name}") \nIndex status: {idx}''')
     else:
-      return idx
-  raise Exception(f"Timeout, your index isn't ready yet: {vsc.get_index(index_name)}")
+      raise Exception(f'''Error with the endpoint {vs_endpoint_name}. - this shouldn't happen: {endpoint}.\n Please delete it and re-run the previous cell: vsc.delete_endpoint("{vs_endpoint_name}")''')
+  raise Exception(f"Timeout, your endpoint isn't ready yet: {vsc.get_endpoint(vs_endpoint_name)}")
 
 # COMMAND ----------
 
-def wait_for_vs_catalog_to_be_ready(catalog, timeout_sec = 1800):
-    for i in range(int(timeout_sec/10)):
-        c = vsc.get_catalog(catalog)
-        if 'error_code' in c:
-            raise Exception(f"Error getting catalog. Is it enabled in this workspace? {c} - {catalog}")
-        if c['catalog_status']['state'] != 'STATE_NOT_READY':
-            print(f'Your catalog {catalog} is ready!: {vsc.get_catalog(catalog)}')
-            return
-        if i % 20 == 0:
-          print(f'waiting for Vector Search catalog to be ready, this can take a few min... {c}')
-        time.sleep(10)
-    raise Exception(f"Vector search catalog isn't ready after {i*10}sec")
+# DBTITLE 1,index
+def index_exists(vsc, endpoint_name, index_full_name):
+    indexes = vsc.list_indexes(endpoint_name).get("vector_indexes", list())
+    return any(index_full_name == index.get("name") for index in indexes)
+    
+def wait_for_index_to_be_ready(vsc, vs_endpoint_name, index_name):
+  for i in range(180):
+    idx = vsc.get_index(vs_endpoint_name, index_name).describe()
+    index_status = idx.get('status', idx.get('index_status', {}))
+    status = index_status.get('detailed_state', index_status.get('status', 'UNKNOWN')).upper()
+    url = index_status.get('index_url', index_status.get('url', 'UNKNOWN'))
+    if "ONLINE" in status:
+      return
+    if "UNKNOWN" in status:
+      print(f"Can't get the status - will assume index is ready {idx} - url: {url}")
+      return
+    elif "PROVISIONING" in status:
+      if i % 20 == 0: print(f"Waiting for index to be ready, this can take a few min... {index_status} - pipeline url:{url}")
+      time.sleep(10)
+    else:
+        raise Exception(f'''Error with the index - this shouldn't happen. DLT pipeline might have been killed.\n Please delete it and re-run the previous cell: vsc.delete_index("{index_name}, {vs_endpoint_name}") \nIndex details: {idx}''')
+  raise Exception(f"Timeout, your index isn't ready yet: {vsc.get_index(index_name, vs_endpoint_name)}")
 
 # COMMAND ----------
 
 import requests
-import pandas as pd
-import concurrent.futures
 from bs4 import BeautifulSoup
-import re
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
+from pyspark.sql.types import StringType
 
-# Function to fetch HTML content for a given URL
-def fetch_html(url):
-    response = requests.get(url)
-    if response.status_code != 200:
-        print(f"Error fetching {url}: {e}")
-        return None
-    return response.content
 
-# Function to process a URL and extract text from the specified div
-def download_web_page(url):
-    html_content = fetch_html(url)
-    if html_content:
-        soup = BeautifulSoup(html_content, "html.parser")
-        article_div = soup.find("div", itemprop="articleBody")
-        if article_div:
-            article_text = str(article_div)
-            return {"url": url, "text": article_text.strip()}
-    return None
+def download_databricks_documentation_articles(max_documents=None):
+    # Fetch the XML content from sitemap
+    response = requests.get(DATABRICKS_SITEMAP_URL)
+    root = ET.fromstring(response.content)
+
+    # Find all 'loc' elements (URLs) in the XML
+    urls = [loc.text for loc in root.findall(".//{http://www.sitemaps.org/schemas/sitemap/0.9}loc")]
+    if max_documents:
+        urls = urls[:max_documents]
+
+    # Create DataFrame from URLs
+    df_urls = spark.createDataFrame(urls, StringType()).toDF("url").repartition(10)
+
+    # Pandas UDF to fetch HTML content for a batch of URLs
+    @pandas_udf("string")
+    def fetch_html_udf(urls: pd.Series) -> pd.Series:
+        def fetch_html(url):
+            try:
+                response = requests.get(url)
+                if response.status_code == 200:
+                    return response.content
+            except requests.RequestException:
+                return None
+            return None
+
+        with ThreadPoolExecutor(max_workers=200) as executor:
+            results = list(executor.map(fetch_html, urls))
+        return pd.Series(results)
+
+    # Pandas UDF to process HTML content and extract text
+    @pandas_udf("string")
+    def download_web_page_udf(html_contents: pd.Series) -> pd.Series:
+        def extract_text(html_content):
+            if html_content:
+                soup = BeautifulSoup(html_content, "html.parser")
+                article_div = soup.find("div", itemprop="articleBody")
+                if article_div:
+                    return str(article_div).strip()
+            return None
+
+        return html_contents.apply(extract_text)
+
+    # Apply UDFs to DataFrame
+    df_with_html = df_urls.withColumn("html_content", fetch_html_udf("url"))
+    final_df = df_with_html.withColumn("text", download_web_page_udf("html_content"))
+
+    # Select and filter non-null results
+    final_df = final_df.select("url", "text").filter("text IS NOT NULL")
+    if final_df.isEmpty():
+      raise Exception("Dataframe is empty, couldn't download Databricks documentation, please check sitemap status.")
+
+    return final_df
+
+# COMMAND ----------
+
+def display_gradio_app(space_name = "databricks-demos-chatbot"):
+    displayHTML(f'''<div style="margin: auto; width: 1000px"><iframe src="https://{space_name}.hf.space" frameborder="0" width="1000" height="950" style="margin: auto"></iframe></div>''')
+
+# COMMAND ----------
+
+# DBTITLE 1,Temporary langchain wrapper - will be part of langchain soon
+from typing import Any, Iterator, List, Optional
+
+try:
+    from langchain.pydantic_v1 import BaseModel
+    from langchain.schema.embeddings import Embeddings
+    from langchain.callbacks.manager import CallbackManagerForLLMRun
+    from langchain.chat_models.base import SimpleChatModel
+    from langchain.schema.messages import AIMessage, BaseMessage
+    from langchain.adapters.openai import convert_message_to_dict
+    import langchain
+
+
+    class DatabricksEmbeddings(Embeddings):
+        def __init__(self, model: str, host: str, **kwargs):
+            super().__init__(**kwargs)
+            self.model = model
+            self.host = host
+
+        def _query(self, texts: List[str]) -> List[List[float]]:
+            os.environ['DATABRICKS_HOST'] = self.host
+            def _chunk(texts: List[str], size: int) -> Iterator[List[str]]:
+                for i in range(0, len(texts), size):
+                    yield texts[i : i + size]
+
+            from databricks_genai_inference import Embedding
+
+            embeddings = []
+            for txt in _chunk(texts, 20):
+                response = Embedding.create(model=self.model, input=txt)
+                embeddings.extend(response.embeddings)
+            return embeddings
+
+        def embed_documents(self, texts: List[str]) -> List[List[float]]:
+            return self._query(texts)
+
+        def embed_query(self, text: str) -> List[float]:
+            return self._query([text])[0]
+
+
+    class DatabricksChatModel(SimpleChatModel):
+        model: str
+
+        @property
+        def _llm_type(self) -> str:
+            return "databricks-chat-model"
+
+        def _call(
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+        ) -> str:
+            try:
+                from databricks_genai_inference import ChatCompletion
+            except ImportError as e:
+                raise ImportError("message") from e
+
+            messages_dicts = [convert_message_to_dict(m) for m in messages]
+
+            response = ChatCompletion.create(
+                model=self.model,
+                messages=[
+                    m
+                    for m in messages_dicts
+                    if m["role"] in {"system", "user", "assistant"} and m["content"]
+                ],
+                **kwargs,
+            )
+            return response.message
+except:
+    print('langchain not installed')
+
+# COMMAND ----------
+
+# DBTITLE 1,Cleanup utility to remove demo assets
+def cleanup_demo(catalog, db, serving_endpoint_name, vs_index_fullname):
+  vsc = VectorSearchClient()
+  try:
+    vsc.delete_index(endpoint_name = VECTOR_SEARCH_ENDPOINT_NAME, index_name=vs_index_fullname)
+  except Exception as e:
+    print(f"can't delete index {VECTOR_SEARCH_ENDPOINT_NAME} {vs_index_fullname} - might not be existing: {e}")
+  try:
+    WorkspaceClient().serving_endpoints.delete(serving_endpoint_name)
+  except Exception as e:
+    print(f"can't delete serving endpoint {serving_endpoint_name} - might not be existing: {e}")
+  spark.sql(f'DROP SCHEMA `{catalog}`.`{db}` CASCADE')

@@ -41,10 +41,9 @@
 
 -- COMMAND ----------
 
--- MAGIC %sql 
--- MAGIC CREATE OR REPLACE TEMPORARY VIEW demo_dlt_loans_system_event_log_raw 
--- MAGIC   as SELECT * FROM delta.`$storage_path/system/events`;
--- MAGIC SELECT * FROM demo_dlt_loans_system_event_log_raw order by timestamp desc;
+CREATE OR REPLACE TEMPORARY VIEW demo_dlt_loans_system_event_log_raw 
+  as SELECT * FROM delta.`$storage_path/system/events`;
+SELECT * FROM demo_dlt_loans_system_event_log_raw order by timestamp desc;
 
 -- COMMAND ----------
 

@@ -71,6 +71,18 @@ spark.sql(f'USE {DB}')
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC -- Query all 3 tables
+# MAGIC CREATE OR REPLACE VIEW gold_readings AS
+# MAGIC SELECT r.*, 
+# MAGIC   power, 
+# MAGIC   ifnull(maintenance,False) as maintenance
+# MAGIC FROM vr_iiot.backup.turbine_enriched r 
+# MAGIC   JOIN turbine_power p ON (r.date=p.date AND r.window=p.window AND r.deviceid=p.deviceid)
+# MAGIC   LEFT JOIN turbine_maintenance m ON (r.date=m.date AND r.deviceid=m.deviceid)
+
+# COMMAND ----------
+
+# MAGIC %sql
 # MAGIC -- Calculate the age of each turbine and the remaining life in days
 # MAGIC CREATE OR REPLACE VIEW turbine_age AS
 # MAGIC WITH reading_dates AS (SELECT distinct date, deviceid FROM turbine_power),
@@ -84,7 +96,7 @@ spark.sql(f'USE {DB}')
 # MAGIC
 # MAGIC -- Calculate the power 6 hours ahead using Spark Windowing and build a feature_table to feed into our ML models
 # MAGIC CREATE OR REPLACE VIEW feature_table AS
-# MAGIC SELECT r.*, age, remaining_life,
+# MAGIC SELECT r.*, a.age, a.remaining_life,
 # MAGIC   LEAD(power, 72, power) OVER (PARTITION BY r.deviceid ORDER BY window) as power_6_hours_ahead
 # MAGIC FROM gold_readings r JOIN turbine_age a ON (r.date=a.date AND r.deviceid=a.deviceid)
 # MAGIC WHERE r.date < CURRENT_DATE();
@@ -98,6 +110,14 @@ spark.sql(f'USE {DB}')
 
 # MAGIC %sql
 # MAGIC SELECT date, avg(age) as age, avg(remaining_life) as life FROM feature_table WHERE deviceid='WindTurbine-1' GROUP BY date ORDER BY date
+
+# COMMAND ----------
+
+# MAGIC %md ### Profiling
+
+# COMMAND ----------
+
+# MAGIC %sql select * from feature_table limit 1000000
 
 # COMMAND ----------
 

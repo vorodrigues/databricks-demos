@@ -42,6 +42,7 @@
 # MAGIC ### Databricks Configuration Required
 # MAGIC * 3-node (min) Databricks Cluster running **DBR 11.3 ML** and the following libraries:
 # MAGIC   * **Azure Event Hubs Connector for Databricks** - Maven coordinates `com.microsoft.azure:azure-eventhubs-spark_2.12:2.3.17`
+# MAGIC   * **Azure IoT Hub Device SDK** - PyPI coordinates `azure-iot-device==2.12.0`
 
 # COMMAND ----------
 
@@ -215,7 +216,7 @@ def merge_delta(incremental, target):
 # MAGIC %md ### 2b. Gold Layer & ML Inference
 # MAGIC Next we perform a streaming join of weather and turbine readings to create one enriched dataset we can use for data science and model training.
 # MAGIC
-# MAGIC Also, our Data Science team has already used this data to build a predictive maintenance model and saved it into MLflow Model Registry (we'll see how to do that next).
+# MAGIC Also, our Data Science team has already used this data to build <a href="https://e2-demo-field-eng.cloud.databricks.com/ml/models/VR%20IIoT%20-%20Life%20-%20WindTurbine-1?o=1444828305810485">this predictive maintenance model</a> and saved it into MLflow Model Registry (we'll see how to do that next).
 # MAGIC
 # MAGIC One of the key value of the Lakehouse is that we can easily load this model and predict faulty turbines with into our pipeline directly.
 # MAGIC

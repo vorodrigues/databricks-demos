@@ -16,7 +16,7 @@ dbutils.widgets.text("catalog", "", "Catalog")
 #Empty value will be set to a database scoped to the current user using db_prefix
 dbutils.widgets.text("db", "", "Database")
 #ignored if db is set (we force the databse to the given value in this case)
-dbutils.widgets.text("db_prefix", "", "Database prefix")
+dbutils.widgets.text("db_prefix", "retail", "Database prefix")
 
 # COMMAND ----------
 
@@ -78,23 +78,13 @@ def init_experiment_for_batch(demo_name, experiment_name):
   #You can programatically get a PAT token with the following
   pat_token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
   url = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()
-  headers = {"Accept": "application/json", "Authorization": f"Bearer {pat_token}"}
+  #current_user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
   import requests
-  xp_root_path = f"/Shared/dbdemos/experiments/{demo_name}"
-  r = requests.post(f"{url}/api/2.0/workspace/mkdirs", headers = headers, json={ "path": xp_root_path})
-  if r.status_code != 200:
-    print(f"ERROR: couldn't create a folder for the experiment under {xp_root_path} - please create the folder manually or  skip this init (used for job only: {r})")
-  else:
-    for i in range(3):
-      #Wait to make sure the folder is created cause it's asynch?
-      folder = requests.get(f"{url}/api/2.0/workspace/list", headers = headers, params={ "path": xp_root_path}).json()
-      if folder.get('error_code', "") != 'RESOURCE_DOES_NOT_EXIST':
-        break
-    time.sleep(1*i)
+  xp_root_path = f"/dbdemos/experiments/{demo_name}"
+  requests.post(f"{url}/api/2.0/workspace/mkdirs", headers = {"Accept": "application/json", "Authorization": f"Bearer {pat_token}"}, json={ "path": xp_root_path})
   xp = f"{xp_root_path}/{experiment_name}"
   print(f"Using common experiment under {xp}")
   mlflow.set_experiment(xp)
-  set_experiment_permission(xp)
   return mlflow.get_experiment_by_name(xp)
 
 # COMMAND ----------
@@ -119,18 +109,12 @@ if len(db) == 0:
   dbName = db_prefix+"_"+current_user_no_at
 else:
   dbName = db
-
+  
+cloud_storage_path = f"/Users/{current_user}/demos/{db_prefix}"
+reset_all = dbutils.widgets.get("reset_all_data") == "true"
 
 #Try to use the UC catalog "dbdemos" when possible. IF not will fallback to hive_metastore
 catalog = dbutils.widgets.get("catalog")
-
-if len(db_prefix) > 0:
-    cloud_storage_path = f"/Users/{current_user}/demos/{db_prefix}"
-else:
-    cloud_storage_path = f"/Users/{current_user}/demos/{catalog}_{db}"
-    
-reset_all = dbutils.widgets.get("reset_all_data") == "true"
-
 
 def use_and_create_db(catalog, dbName, cloud_storage_path = None):
   print(f"USE CATALOG `{catalog}`")
@@ -141,7 +125,6 @@ def use_and_create_db(catalog, dbName, cloud_storage_path = None):
     spark.sql(f"""create database if not exists `{dbName}` LOCATION '{cloud_storage_path}/tables' """)
 
 if reset_all:
-  print(f'clearing up db {dbName} and cloud_storage_path={cloud_storage_path}')
   spark.sql(f"DROP DATABASE IF EXISTS `{dbName}` CASCADE")
   dbutils.fs.rm(cloud_storage_path, True)
 
@@ -155,7 +138,6 @@ if len(catalog) > 0:
     catalogs = [r['catalog'] for r in spark.sql("SHOW CATALOGS").collect()]
     if catalog not in catalogs and catalog not in ['hive_metastore', 'spark_catalog']:
       spark.sql(f"CREATE CATALOG IF NOT EXISTS {catalog}")
-      spark.sql(f"ALTER CATALOG {catalog} OWNER TO `account users`")
   use_and_create_db(catalog, dbName)
 else:
   #otherwise we'll try to setup the catalog to DBDEMOS and create the database here. If we can't we'll fallback to legacy hive_metastore
@@ -168,7 +150,6 @@ else:
     else:
       if "dbdemos" not in catalogs:
         spark.sql("CREATE CATALOG IF NOT EXISTS dbdemos")
-        spark.sql(f"ALTER CATALOG dbdemos OWNER TO `account users`")
       catalog = "dbdemos"
     use_and_create_db(catalog, dbName)
   except Exception as e:
@@ -187,8 +168,7 @@ if catalog not in ['hive_metastore', 'spark_catalog']:
     spark.sql(f"ALTER SCHEMA {catalog}.{dbName} OWNER TO `account users`")
   except Exception as e:
     print("Couldn't grant access to the schema to all users:"+str(e))
-
-schema = dbName
+  
 #with parallel execution this can fail the time of the initialization. add a few retry to fix these issues
 for i in range(10):
   try:
@@ -211,27 +191,6 @@ def display_slide(slide_id, slide_number):
     height="683"
   ></iframe></div>
   ''')
-
-# COMMAND ----------
-
-# DBTITLE 1,Endpoint/model permission helper
-def set_model_permission(model_name, permission, principal):
-  import databricks.sdk.service.catalog as c
-  sdk_client = databricks.sdk.WorkspaceClient()
-  return sdk_client.grants.update(c.SecurableType.FUNCTION, model_name, changes=[
-                            c.PermissionsChange(add=[c.Privilege[permission]], principal=principal)])
-
-def set_model_endpoint_permission(endpoint_name, permission, group_name):
-  import databricks.sdk.service.serving as s
-  sdk_client = databricks.sdk.WorkspaceClient()
-  ep = sdk_client.serving_endpoints.get(endpoint_name)
-  return sdk_client.serving_endpoints.set_permissions(serving_endpoint_id=ep.id, access_control_list=[s.ServingEndpointAccessControlRequest(permission_level=s.ServingEndpointPermissionLevel[permission], group_name=group_name)])
-
-def set_index_permission(index_name, permission, principal):
-    import databricks.sdk.service.catalog as c
-    sdk_client = databricks.sdk.WorkspaceClient()
-    return sdk_client.grants.update(c.SecurableType.TABLE, index_name, changes=[
-                            c.PermissionsChange(add=[c.Privilege[permission]], principal=principal)])
 
 # COMMAND ----------
 
@@ -316,7 +275,7 @@ def start_automl_run(name, model_name, dataset, target_col, timeout_minutes = 5,
   spark.createDataFrame(data=[(name, datetime.today().isoformat(), experiment_id, path, data_run_id, automl_run.best_trial.mlflow_run_id, exploration_notebook_id, best_trial_notebook_id)], schema = cols).write.mode("append").option("mergeSchema", "true").saveAsTable("hive_metastore.dbdemos_metadata.automl_experiment")
   #Create & save the first model version in the MLFlow repo (required to setup hooks etc)
   model_registered = mlflow.register_model(f"runs:/{automl_run.best_trial.mlflow_run_id}/model", model_name)
-  set_experiment_permission_automl(path)
+  set_experiment_permission(path)
   if move_to_production:
     client = mlflow.tracking.MlflowClient()
     print("registering model version "+model_registered.version+" as production model")
@@ -336,24 +295,19 @@ def reset_automl_run(model_name):
   if spark._jsparkSession.catalog().tableExists('hive_metastore.dbdemos_metadata.automl_experiment'):
       spark.sql(f"delete from hive_metastore.dbdemos_metadata.automl_experiment where name='{model_name}'")
 
+#Once the automl experiment is created, we assign CAN MANAGE to all users as it's shared in the workspace
 def set_experiment_permission(experiment_path):
   url = dbutils.notebook.entry_point.getDbutils().notebook().getContext().extraContext().apply("api_url")
   import requests
   pat_token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
   headers =  {"Authorization": "Bearer " + pat_token, 'Content-type': 'application/json'}
   status = requests.get(url+"/api/2.0/workspace/get-status", params = {"path": experiment_path}, headers=headers).json()
-  if "object_id" not in status:
-        print(f"error setting up shared experiment permission: {status}")
-  else:
-    #Set can manage to all users to the experiment we created as it's shared among all
-    params = {"access_control_list": [{"group_name": "users","permission_level": "CAN_MANAGE"}]}
-    permissions = requests.patch(f"{url}/api/2.0/permissions/experiments/{status['object_id']}", json = params, headers=headers)
-    if permissions.status_code != 200:
-      print("ERROR: couldn't set permission to all users to the autoML experiment")
+  #Set can manage to all users to the experiment we created as it's shared among all
+  params = {"access_control_list": [{"group_name": "users","permission_level": "CAN_MANAGE"}]}
+  permissions = requests.patch(f"{url}/api/2.0/permissions/experiments/{status['object_id']}", json = params, headers=headers)
+  if permissions.status_code != 200:
+    print("ERROR: couldn't set permission to all users to the autoML experiment")
 
-#Once the automl experiment is created, we assign CAN MANAGE to all users as it's shared in the workspace
-def set_experiment_permission_automl(experiment_path):
-  set_experiment_permission(experiment_path)
   #try to find the experiment id
   result = re.search(r"_([a-f0-9]{8}_[a-f0-9]{4}_[a-f0-9]{4}_[a-f0-9]{4}_[a-f0-9]{12})_", experiment_path)
   if result is not None and len(result.groups()) > 0:
@@ -372,16 +326,6 @@ def set_experiment_permission_automl(experiment_path):
         permissions = requests.patch(f"{url}/api/2.0/permissions/directories/{f['object_id']}", json = params, headers=headers)
         if permissions.status_code != 200:
           print("ERROR: couldn't set permission to all users to the autoML experiment notebooks")
-
-# COMMAND ----------
-
-def drop_fs_table(table_name):
-  try:
-    #drop table if exists
-    fs.drop_table(table_name)
-    spark.sql(f'DROP TABLE IF EXISTS {table_name}')
-  except:
-    pass
 
 # COMMAND ----------
 
@@ -437,34 +381,3 @@ def download_file_from_git(dest, owner, repo, path):
          download_file(url, dest)
     with ThreadPoolExecutor(max_workers=10) as executor:
         collections.deque(executor.map(download_to_dest, files))
-
-# COMMAND ----------
-
-def get_last_experiment(demo_name, experiment_path = "/Shared/dbdemos/experiments/"):
-    import requests
-    import re
-    from datetime import datetime
-    base_url =dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()
-    token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    r = requests.get(base_url+"/api/2.0/workspace/list", params={'path': f"{experiment_path}/{demo_name}"}, headers=headers).json()
-    xps = [f for f in r['objects'] if f['object_type'] == 'MLFLOW_EXPERIMENT' and 'automl_churn' in f['path']]
-    sorted_xp = sorted(xps, key=lambda f: f['path'], reverse = True)
-    if len(sorted_xp) == 0:
-        raise Exception("No experiment avvailable for this demo. Please re-run the previous notebook with the AutoML run.")
-
-    last_xp = sorted_xp[0]
-
-    # Search for the date pattern in the input string
-    match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2})', last_xp['path'])
-
-    if match:
-        date_str = match.group(1)  # Extract the matched date string
-        date = datetime.strptime(date_str, '%Y-%m-%d_%H:%M:%S')  # Convert to a datetime object
-        # Calculate the difference in days from the current date
-        days_difference = (datetime.now() - date).days
-        if days_difference > 30:
-            raise Exception(f"It looks like the last experiment {last_xp} is too old ({days} days). Please re-run the previous notebook to make sure you have the latest version.")
-    else:
-        raise Exception("Invalid experiment format or no experiment avvailable. Please re-run the previous notebook.")
-    return last_xp

@@ -44,6 +44,10 @@ def downloadInfs(path_zip, path_csv, limit=0):
 
 # COMMAND ----------
 
+# MAGIC %sh scrapy runspider /databricks/driver/cvm-spyder.py -a limit={limit} -a path_zip={path_zip} -a path_csv={path_csv}
+
+# COMMAND ----------
+
 # MAGIC %md ## Download dos Dados
 # MAGIC
 # MAGIC Uma das vantagens do Lakehouse é ser uma plataforma aberta. Com isso, podemos utilizar diversas ferramentas para estender suas capacidades.
