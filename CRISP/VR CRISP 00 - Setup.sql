@@ -85,20 +85,15 @@ create database if not exists vr_demo.crisp
 -- MAGIC # Create a dataframe with the desired columns
 -- MAGIC df = spark.sql("""
 -- MAGIC   SELECT sales_id, date_key, store_id, product_id, sales_quantity, sales_amount FROM vr_demo.crisp.sales
--- MAGIC   WHERE date_key between '2022-12-01'and '2022-12-31'
+-- MAGIC   --WHERE
+-- MAGIC   --  (product_id=506697609867662742 AND store_id=8658698973831929810) OR
+-- MAGIC   --  (product_id=506697609867662742 AND store_id=8092803279587142042)OR
+-- MAGIC   --  (product_id=4120371332641752996 AND store_id=8658698973831929810)OR
+-- MAGIC   --  (product_id=4120371332641752996 AND store_id=7453018759137932870)
 -- MAGIC """)
 -- MAGIC
 -- MAGIC # Save the dataframe in JSON format
--- MAGIC df.write.json("s3://one-env/vr/crisp/sales")
-
--- COMMAND ----------
-
--- MAGIC %md ## Criar tabela de lojas
-
--- COMMAND ----------
-
-create table vr_demo.crisp.dim_store as
-select distinct store_id, store, store_type, store_zip, store_lat_long from vr_demo.crisp.sales
+-- MAGIC df.write.mode("overwrite").json("s3://one-env/vr/crisp/sales")
 
 -- COMMAND ----------
 
@@ -106,5 +101,14 @@ select distinct store_id, store, store_type, store_zip, store_lat_long from vr_d
 
 -- COMMAND ----------
 
-create table vr_demo.crisp.dim_product as
+create or replace table vr_demo.crisp.dim_product as
 select distinct product_id, supplier, product, upc from vr_demo.crisp.sales
+
+-- COMMAND ----------
+
+-- MAGIC %md ## Criar tabela de lojas
+
+-- COMMAND ----------
+
+create or replace table vr_demo.crisp.dim_store as
+select distinct store_id, retailer, store, store_type, store_zip, store_lat_long from vr_demo.crisp.sales
