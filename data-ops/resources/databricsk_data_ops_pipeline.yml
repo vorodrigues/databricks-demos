@@ -1,0 +1,12 @@
+# The main pipeline for databricks_data_ops
+resources:
+  pipelines:
+    databricks_data_ops_pipeline:
+      name: databricks_data_ops_pipeline
+      target: databricks_data_ops_${bundle.environment}
+      libraries:
+        - notebook:
+            path: ../src/dlt_pipeline.ipynb
+
+      configuration:
+        bundle.sourcePath: /Workspace/${workspace.file_path}/src
