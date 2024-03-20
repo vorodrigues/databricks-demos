@@ -2,7 +2,7 @@
 resources:
   jobs:
     databricks_data_ops_job:
-      name: [${bundle.target}] databricks_data_ops_job
+      name: ${bundle.target}_databricks_data_ops_job
 
       schedule:
         # Run every day at 8:37 AM / PAUSED
