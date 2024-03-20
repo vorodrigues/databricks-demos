@@ -36,7 +36,7 @@ targets:
   prod:
     # We use 'mode: production' to indicate this is a production deployment.
     # Doing so enables strict verification of the settings below.
-    mode: production
+    # mode: production
     workspace:
       host: https://e2-demo-west.cloud.databricks.com
       # We always use /Users/victor.rodrigues@databricks.com for all resources to make sure we only have a single copy.
