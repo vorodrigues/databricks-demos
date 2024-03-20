@@ -33,7 +33,7 @@ jobs:
   #           pytest
 
   integration_test:
-    needs: unit_tests
+    # needs: unit_tests
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repo
