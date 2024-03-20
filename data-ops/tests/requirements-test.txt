@@ -1,1 +1,1 @@
-databricks-connect>=13.3,<13.4
+databricks-connect>=14.3.1
