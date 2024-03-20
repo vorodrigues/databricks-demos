@@ -101,8 +101,34 @@ create database if not exists vr_demo.crisp
 
 -- COMMAND ----------
 
-create or replace table vr_demo.crisp.dim_product as
-select distinct product_id, supplier, product, upc from vr_demo.crisp.sales
+-- MAGIC %python
+-- MAGIC
+-- MAGIC df = spark.sql('''
+-- MAGIC   with r as (
+-- MAGIC     select distinct product_id, supplier, product, upc, rank() over (partition by product_id order by date_key desc) as rnk from vr_demo.crisp.sales limit 1000
+-- MAGIC   )
+-- MAGIC   select * except (rnk) from r where rnk = 1
+-- MAGIC ''')
+-- MAGIC
+-- MAGIC server_name = "jdbc:sqlserver://jsfsql.database.windows.net:1433"
+-- MAGIC database_name = "dbo"
+-- MAGIC url = server_name + ";" + "databaseName=" + database_name + ";"
+-- MAGIC
+-- MAGIC table_name = "dim_product"
+-- MAGIC username = "username" # Please specify user here
+-- MAGIC password = "password123!#" # Please specify password here
+-- MAGIC
+-- MAGIC try:
+-- MAGIC   df.write \
+-- MAGIC     .format("com.microsoft.sqlserver.jdbc.spark") \
+-- MAGIC     .mode("overwrite") \
+-- MAGIC     .option("url", url) \
+-- MAGIC     .option("dbtable", table_name) \
+-- MAGIC     .option("user", username) \
+-- MAGIC     .option("password", password) \
+-- MAGIC     .save()
+-- MAGIC except ValueError as error :
+-- MAGIC     print("Connector write failed", error)
 
 -- COMMAND ----------
 

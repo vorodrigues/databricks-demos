@@ -18,6 +18,11 @@ formatted_date = now.strftime('%Y-%m-%d_%H-%M')
 model = databricks.automl.forecast(
   experiment_name=f"VR CRISP Sales Forecast {formatted_date}",
   dataset=spark.table("vr_demo.crisp.sales_monthly").where("""
+    (product_id=7529767289596171178 AND store_id=4028576256296879621) OR
+    (product_id=7529767289596171178 AND store_id=8255463680201369049) OR
+    (product_id=7262525695453454463 AND store_id=7909929122585239790) OR
+    (product_id=7529767289596171178 AND store_id=1162676141249511919) OR
+    (product_id=5131941246915832690 AND store_id=4028576256296879621) OR
     (product_id=506697609867662742 AND store_id=8658698973831929810) OR
     (product_id=506697609867662742 AND store_id=8092803279587142042)OR
     (product_id=4120371332641752996 AND store_id=8658698973831929810)OR
