@@ -1,17 +1,31 @@
-# The main job for databricks_data_ops.
+# The main job for databricks_data_ops
 resources:
   jobs:
     databricks_data_ops_job:
-      name: databricks_data_ops_job
+      name: ${bundle.target}_databricks_data_ops_job
 
       schedule:
-        # Run every day at 8:37 AM
+        # Run every day at 8:37 AM / PAUSED
         quartz_cron_expression: '44 37 8 * * ?'
         timezone_id: Europe/Amsterdam
+        pause_status: PAUSED
 
       email_notifications:
         on_failure:
           - victor.rodrigues@databricks.com
+
+      job_clusters:
+        - job_cluster_key: job_cluster
+          new_cluster:
+            policy_id: E05E27B13F0003A0
+            spark_version: 13.3.x-scala2.12
+            node_type_id: i3.xlarge
+            autoscale:
+                min_workers: 1
+                max_workers: 3
+            runtime_engine: PHOTON
+            custom_tags:
+              project: data-ops
 
       tasks:
         - task_key: notebook_task
@@ -37,12 +51,3 @@ resources:
             # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
             # for more information on how to add other libraries.
             - whl: ../dist/*.whl
-
-      job_clusters:
-        - job_cluster_key: job_cluster
-          new_cluster:
-            spark_version: 13.3.x-scala2.12
-            node_type_id: i3.xlarge
-            autoscale:
-                min_workers: 1
-                max_workers: 4
