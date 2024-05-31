@@ -74,6 +74,7 @@ FROM
     's3://one-env/vr/crisp/sales',
     'json',
     map("cloudFiles.inferColumnTypes", "true")
+  
   )
 
 -- COMMAND ----------

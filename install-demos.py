@@ -4,8 +4,11 @@
 # COMMAND ----------
 
 import dbdemos
-dbdemos.install('sql-ai-functions', path='./')
 
-# COMMAND ----------
-
-
+dbdemos.install(
+  demo_name='feature-store',
+  path='./', 
+  catalog='vr_demo', 
+  schema='feature_store',
+  overwrite=True
+)

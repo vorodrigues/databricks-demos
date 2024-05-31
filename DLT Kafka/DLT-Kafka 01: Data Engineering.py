@@ -20,7 +20,7 @@ topic = f"{user}_kafka_demo"
 # COMMAND ----------
 
 # MAGIC %md # DLT-Kafka 01: Data Engineering
-# MAGIC 
+# MAGIC
 # MAGIC ![Delta Lake base architecture](https://databricks.com/wp-content/uploads/2019/08/Delta-Lake-Multi-Hop-Architecture-Overview.png)
 
 # COMMAND ----------
@@ -87,3 +87,21 @@ silverDF.writeStream.format("delta") \
 # DBTITLE 1,Query silver table
 # MAGIC %sql
 # MAGIC SELECT action, count(1) FROM events_silver GROUP BY action
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+bronzeDF.limit(100).writeStream.format("json") \
+  .outputMode("overwrite") \
+  .table("temp")

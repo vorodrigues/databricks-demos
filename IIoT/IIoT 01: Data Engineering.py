@@ -167,6 +167,7 @@ def merge_delta(incremental, target):
       MERGE INTO {target} t
       USING incremental i
       ON i.date=t.date AND i.window = t.window AND i.deviceId = t.deviceid
+      WHEN MATCHED AND i.op_code = 'd' THEN DELETE
       WHEN MATCHED THEN UPDATE SET *
       WHEN NOT MATCHED THEN INSERT *
     """)
