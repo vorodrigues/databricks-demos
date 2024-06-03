@@ -356,6 +356,37 @@ display(pre)
 
 # COMMAND ----------
 
+datasets = []
+# def log_inputs(feature_lookups):
+for lookup in feature_lookups:
+  try:
+    table_name = lookup.table_name
+    table_version = spark.sql(f'describe history {table_name}').head(1)[0]['version']
+    print(f'{table_name} : {table_version}')
+    # dataset = mlflow.data.from_spark(spark.table(table_name).limit(10).collect(), table_name=table_name, version=table_version)
+    datasource = mlflow.data.delta_dataset_source.DeltaDatasetSource(delta_table_name=table_name, delta_table_version=table_version)
+    dataset = mlflow.data.dataset.Dataset(datasource, name=table_name)
+    datasets.append(dataset)
+    # mlflow.log_input(dataset)
+  except:
+    pass
+
+# COMMAND ----------
+
+sources = []
+for lookup in feature_lookups:
+  try:
+    table_name = lookup.table_name
+    table_version = spark.sql(f'describe history {table_name}').head(1)[0]['version']
+    print(f'{table_name} : {table_version}')
+    sources.append({'table_name': table_name, 'table_version': table_version})
+  except:
+    pass
+# tag = {'sources': sources}
+# print(tag)
+
+# COMMAND ----------
+
 from xgboost import XGBClassifier
 from sklearn.metrics import roc_auc_score
 
@@ -392,6 +423,14 @@ def evaluate_model(hyperopt_params):
   # log model
   mlflow.log_metric('train_auc', auc_train)
   mlflow.log_metric('test_auc', auc_test)
+
+  # log dataset
+  # for dataset in datasets:
+  #   mlflow.log_input(dataset, context='train')
+  # log_inputs(feature_lookups)
+
+  # set tags
+  mlflow.set_tag('sources', sources)
   
   # invert metric for hyperopt
   loss = -1 * auc_test  
@@ -447,7 +486,7 @@ with mlflow.start_run(run_name='XGBClassifer'):
     fn=evaluate_model,
     space=search_space,
     algo=tpe.suggest,
-    max_evals=50,
+    max_evals=8,
     trials=SparkTrials(parallelism=4), # set to the number of available cores
     verbose=True
   )
@@ -516,6 +555,7 @@ with mlflow.start_run(run_name='XGB Final Model') as run:
   )
   mlflow.log_metric('train_auc', auc_train)
   mlflow.log_metric('test_auc', auc_test)
+  mlflow.set_tag('sources', sources)
 
   print('Model logged under run_id "{0}" with AUC score of {1:.5f}'.format(run_id, auc_test))
   display(model)
@@ -676,8 +716,12 @@ except Exception as e:
 # COMMAND ----------
 
 # DBTITLE 1,Query endpoint
+from databricks.sdk import WorkspaceClient
 
-lookup_keys = test_df.drop('purchased').limit(2).toPandas().astype({'ts': 'str', 'booking_date': 'str'}).to_dict(orient="records")
+wc = WorkspaceClient()
+endpoint_name = "vr_travel_expert_endpoint"
+
+lookup_keys = test_df.drop('purchased').limit(3).toPandas().astype({'ts': 'str', 'booking_date': 'str'}).to_dict(orient="records")
 print(f'Compute the propensity score for these customers: {lookup_keys}')
 #Query the endpoint
 for i in range(3):
