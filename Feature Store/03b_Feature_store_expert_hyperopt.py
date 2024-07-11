@@ -356,23 +356,6 @@ display(pre)
 
 # COMMAND ----------
 
-datasets = []
-# def log_inputs(feature_lookups):
-for lookup in feature_lookups:
-  try:
-    table_name = lookup.table_name
-    table_version = spark.sql(f'describe history {table_name}').head(1)[0]['version']
-    print(f'{table_name} : {table_version}')
-    # dataset = mlflow.data.from_spark(spark.table(table_name).limit(10).collect(), table_name=table_name, version=table_version)
-    datasource = mlflow.data.delta_dataset_source.DeltaDatasetSource(delta_table_name=table_name, delta_table_version=table_version)
-    dataset = mlflow.data.dataset.Dataset(datasource, name=table_name)
-    datasets.append(dataset)
-    # mlflow.log_input(dataset)
-  except:
-    pass
-
-# COMMAND ----------
-
 sources = []
 for lookup in feature_lookups:
   try:
@@ -382,8 +365,6 @@ for lookup in feature_lookups:
     sources.append({'table_name': table_name, 'table_version': table_version})
   except:
     pass
-# tag = {'sources': sources}
-# print(tag)
 
 # COMMAND ----------
 
@@ -423,11 +404,6 @@ def evaluate_model(hyperopt_params):
   # log model
   mlflow.log_metric('train_auc', auc_train)
   mlflow.log_metric('test_auc', auc_test)
-
-  # log dataset
-  # for dataset in datasets:
-  #   mlflow.log_input(dataset, context='train')
-  # log_inputs(feature_lookups)
 
   # set tags
   mlflow.set_tag('sources', sources)
@@ -486,8 +462,8 @@ with mlflow.start_run(run_name='XGBClassifer'):
     fn=evaluate_model,
     space=search_space,
     algo=tpe.suggest,
-    max_evals=8,
-    trials=SparkTrials(parallelism=4), # set to the number of available cores
+    max_evals=50,
+    trials=SparkTrials(parallelism=8), # set to the number of available cores
     verbose=True
   )
 
