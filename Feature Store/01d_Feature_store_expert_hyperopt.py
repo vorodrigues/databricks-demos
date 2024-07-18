@@ -400,6 +400,8 @@ def evaluate_model(hyperopt_params):
   # evaluate
   auc_train = roc_auc_score(y_train_input, prob_train[:,1])
   auc_test = roc_auc_score(y_test_input, prob_test[:,1])
+  under = (auc_train < 0.8)
+  over = (auc_test / auc_train > 1.05)
   
   # log model
   mlflow.log_metric('train_auc', auc_train)
@@ -407,6 +409,8 @@ def evaluate_model(hyperopt_params):
 
   # set tags
   mlflow.set_tag('sources', sources)
+  if under: mlflow.set_tag('FITTING', 'UNDER')
+  if over: mlflow.set_tag('FITTING', 'OVER')
   
   # invert metric for hyperopt
   loss = -1 * auc_test  
@@ -565,8 +569,26 @@ if len(latest_model.aliases) == 0 or latest_model.aliases[0] != production_alias
 
 # COMMAND ----------
 
+from databricks.feature_engineering import FeatureEngineeringClient
+fe = FeatureEngineeringClient()
+
+model_name = "vr_travel_expert"
+model_full_name = f"{catalog}.{db}.{model_name}"
+production_alias = "production"
+
+# COMMAND ----------
+
 scored_df = fe.score_batch(model_uri=f"models:/{model_full_name}@{production_alias}", df=test_df, result_type="string")
 display(scored_df)
+
+# COMMAND ----------
+
+(scored_df.selectExpr(f"'{model_full_name}' as model", 
+                      "ts + interval 19 months as ts",
+                      "* EXCEPT (ts, purchased, prediction)",
+                      "case when purchased = true then '1' else '0' end as purchased",
+                      "prediction")
+    .write.saveAsTable(f"{catalog}.{db}.expert_predictions_labels"))
 
 # COMMAND ----------
 
@@ -720,7 +742,6 @@ for i in range(3):
 
 # COMMAND ----------
 
-# DBTITLE 1,Save the feature spec within Unity Catalog
 feature_spec_name = f"{catalog}.{db}.travel_feature_spec"
 try:
     fe.create_feature_spec(name=feature_spec_name, features=feature_lookups, exclude_columns=['user_id', 'destination_id', 'booking_date', 'clicked', 'price'])
@@ -729,7 +750,6 @@ except Exception as e:
 
 # COMMAND ----------
 
-# DBTITLE 1,Create the endpoint using the API
 from databricks.feature_engineering.entities.feature_serving_endpoint import AutoCaptureConfig, EndpointCoreConfig, ServedEntity
 
 # Create endpoint

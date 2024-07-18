@@ -252,6 +252,14 @@ with mlflow.start_run(run_name="dbdemos_chatbot_rag") as run:
 
 # COMMAND ----------
 
+import mlflow
+
+mlflow.set_registry_uri("databricks-uc")
+model_name = f"{catalog}.{db}.dbdemos_chatbot_model"
+host = "https://" + spark.conf.get("spark.databricks.workspaceUrl")
+
+# COMMAND ----------
+
 # Criar ou atualiza o endpoint
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedModelInput, ServedModelInputWorkloadSize

@@ -41,5 +41,17 @@ model = databricks.automl.forecast(
 
 # COMMAND ----------
 
-spark.sql(f"CREATE OR REPLACE VIEW vr_demo.crisp.forecast AS SELECT * FROM {model.output_table_name}")
+dbutils.jobs.taskValues.set(key = "model_output_table_name", value = model.output_table_name)
 print(model.output_table_name)
+
+# COMMAND ----------
+
+perf = model.best_trial.evaluation_metric_score
+dbutils.jobs.taskValues.set(key = "perf", value = perf)
+print(perf)
+
+# COMMAND ----------
+
+approved = (perf < 1.5)
+dbutils.jobs.taskValues.set(key = "approved", value = approved)
+print(approved)

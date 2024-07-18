@@ -1,19 +1,13 @@
 # Databricks notebook source
-# MAGIC %sql drop table if exists vr_demo.crisp.sales_bronze;
-# MAGIC drop table if exists vr_demo.crisp.sales_silver;
-# MAGIC drop table if exists vr_demo.crisp.sales_gold;
-
-# COMMAND ----------
-
-dbutils.fs.rm("s3://one-env/vr/crisp/checkpoint", True)
-
-# COMMAND ----------
-
-dbutils.fs.rm("s3://one-env/vr/crisp/schema", True)
-
-# COMMAND ----------
-
 # MAGIC %md # Torre de Controle Comercial
+
+# COMMAND ----------
+
+if dbutils.widgets.get('reset_data') == 'true':
+  spark.sql('DROP TABLE IF EXISTS vr_demo.crisp.sales_bronze')
+  spark.sql('DROP TABLE IF EXISTS vr_demo.crisp.sales_silver')
+  spark.sql('DROP TABLE IF EXISTS vr_demo.crisp.sales_gold')
+  dbutils.fs.rm("s3://one-env/vr/crisp/checkpoint", True)
 
 # COMMAND ----------
 
@@ -29,12 +23,11 @@ display(dbutils.fs.ls('s3://one-env/vr/crisp/sales'))
 (spark.readStream.format("cloudFiles")
      .option("cloudFiles.format", "json")
      .option("cloudFiles.schemaLocation", "s3://one-env/vr/crisp/schema")
-     .option("cloudFiles.maxBytesPerTrigger", 1048576) # Apenas para demo / cadencia a execução
      .load("s3://one-env/vr/crisp/sales")
      .writeStream
      .format("delta")
      .outputMode("append")
-     .option("checkpointLocation", "s3://one-env/vr/crisp/checkpoint")
+     .option("checkpointLocation", "s3://one-env/vr/crisp/checkpoint/batch")
      .trigger(availableNow=True)
      .toTable("vr_demo.crisp.sales_bronze")
      .awaitTermination())
