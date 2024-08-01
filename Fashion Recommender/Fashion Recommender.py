@@ -9,7 +9,7 @@ dbutils.library.restartPython()
 
 # MAGIC %md-sandbox # Recomendação de Ofertas Baseada em Imagens
 # MAGIC
-# MAGIC <img style="float:right" src="https://github.com/vorodrigues/databricks-demos/blob/dev/Fashion%20Recommender/img/vs.png?raw=true" width="700"/>
+# MAGIC <img style="float:right" src="https://github.com/vorodrigues/databricks-demos/blob/dev/Fashion%20Recommender/img/vs.png?raw=true" width="800"/>
 # MAGIC
 # MAGIC Encontrar uma peça de vestuário em um site de *ecommerce* pode ser bastante trabalhoso e frustante para os clientes. Normalmente, temos algumas opções para filtrar os produtos existentes e/ou ferramentas de busca textual simples, mas ainda assim não é o suficiente para trazer resultados relevantes e customizados para o estilo e necessidade momentânea de cada um.
 # MAGIC
