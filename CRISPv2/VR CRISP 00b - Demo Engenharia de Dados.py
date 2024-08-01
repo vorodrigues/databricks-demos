@@ -81,15 +81,19 @@ df_enriched.write.saveAsTable("vr_demo.crisp.sales_gold")
 
 # COMMAND ----------
 
-# MAGIC %sql SELECT count(*) FROM vr_demo.crisp.sales_bronze VERSION AS OF 1
+# MAGIC %sql SELECT count(*) FROM vr_demo.crisp.sales_bronze
 
 # COMMAND ----------
 
-# MAGIC %sql SELECT count(*) FROM vr_demo.crisp.sales_bronze TIMESTAMP AS OF '2024-07-11T03:18:00'
+# MAGIC %sql SELECT count(*) FROM vr_demo.crisp.sales_bronze VERSION AS OF 0
 
 # COMMAND ----------
 
-# MAGIC %sql RESTORE TABLE vr_demo.crisp.sales_bronze TIMESTAMP AS OF '2024-07-11T03:18:00'
+# MAGIC %sql SELECT count(*) FROM vr_demo.crisp.sales_bronze TIMESTAMP AS OF '2024-07-13T03:15:22.000+00:00'
+
+# COMMAND ----------
+
+# MAGIC %sql RESTORE TABLE vr_demo.crisp.sales_bronze VERSION AS OF 1
 
 # COMMAND ----------
 
