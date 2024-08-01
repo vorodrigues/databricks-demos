@@ -1,4 +1,12 @@
 # Databricks notebook source
+# MAGIC %pip install databricks-vectorsearch
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 # MAGIC %md-sandbox # Recomendação de Ofertas Baseada em Imagens
 # MAGIC
 # MAGIC <img style="float:right" src="https://github.com/vorodrigues/databricks-demos/blob/dev/Fashion%20Recommender/img/vs.png?raw=true" width="800"/>
@@ -80,9 +88,34 @@ df_resized.write.saveAsTable('vr_demo.fashion_recommender.images', mode="overwri
 # COMMAND ----------
 
 # MAGIC %md ## Busca imagens similares no Vector Search
-# MAGIC
-# MAGIC Para buscar imagens similares no Vector Search, vamos utilizar um aplicativo desenvolvido com **Databricks Lakehouse Apps**. Dessa forma, podemos criar e implantar produtos de dados rapidamente usando os principais frameworks de mercado, como o `Gradio`, `FastAPI` e outros, diretamente na sua conta Databricks.
-# MAGIC
-# MAGIC Com isso, contamos com a mesma infraestrutura e governança já existente na sua plataforma de Data Intelligence e pode acelerar a implantação dos seus produtos de dados.
-# MAGIC
-# MAGIC <br><img style="float:right" src="https://github.com/vorodrigues/databricks-demos/blob/dev/Fashion%20Recommender/img/vs-create.png?raw=true" width="500"/>
+
+# COMMAND ----------
+
+# Cria um cliente do Vector Search
+from databricks.vector_search.client import VectorSearchClient
+vsc = VectorSearchClient()
+index = vsc.get_index('one-env-shared-endpoint-9', 'vr_demo.fashion_recommender.images_vs_index')
+
+# COMMAND ----------
+
+# Carrega o conteúdo da imagem desejada
+img_str = (spark.table('vr_demo.fashion_recommender.images')
+    .where('path like "%pants01.png"')
+    .collect()[0]['content'])
+
+# Busca as 3 imagens com maior similaridade no índice do Vector Search
+results = index.similarity_search(
+    query_text=img_str,
+    columns=["path"],
+    num_results=3
+)
+
+# Prepara os resultados para utilização na consulta
+paths = ', '.join([f"'{result[0]}'" for result in results['result']['data_array']])
+
+display(results)
+
+# COMMAND ----------
+
+# Exibe as imagens encontradas
+display(df.where(f"path in ({paths})"))
