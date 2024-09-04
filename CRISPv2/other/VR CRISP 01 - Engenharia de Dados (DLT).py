@@ -158,9 +158,3 @@ def sales_gold():
   product = dlt.read("product")
   store = dlt.read("store")
   return transactions.join(product, on='product_id', how='left').join(store, on='store_id', how='left')
-
-# COMMAND ----------
-
-# MAGIC %environment
-# MAGIC "client": "1"
-# MAGIC "base_environment": ""
