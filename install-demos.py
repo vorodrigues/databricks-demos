@@ -6,9 +6,9 @@
 import dbdemos
 
 dbdemos.install(
-  demo_name='feature-store',
+  demo_name='lakehouse-fsi-fraud',
   path='./', 
   catalog='vr_demo', 
-  schema='feature_store',
+  schema='fraud',
   overwrite=True
 )
