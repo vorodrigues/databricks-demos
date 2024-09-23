@@ -148,3 +148,31 @@ group by all
 -- COMMAND ----------
 
 select count(*) from estoque
+
+-- COMMAND ----------
+
+-- MAGIC %md # Export
+
+-- COMMAND ----------
+
+create volume export
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC spark.table('vendas').coalesce(1).write.format('parquet').save('/Volumes/vr_demo/crisp_handson/export/vendas')
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC spark.table('estoque').coalesce(1).write.format('parquet').save('/Volumes/vr_demo/crisp_handson/export/estoque')
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC spark.table('dim_loja').coalesce(1).write.format('parquet').save('/Volumes/vr_demo/crisp_handson/export/dim_loja')
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC spark.table('dim_medicamento').coalesce(1).write.format('parquet').save('/Volumes/vr_demo/crisp_handson/export/dim_medicamento')

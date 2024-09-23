@@ -16,15 +16,11 @@
 
 -- MAGIC %md ## Exercício 03.00 - Preparação
 -- MAGIC
--- MAGIC 1. Conecte este notebook ao seu SQL Warehouse
--- MAGIC 2. Preencha o parâmetro no topo da página com o nome do database que será utilizado neste laborátio
--- MAGIC 3. Execute a célula abaixo para ativar este database
+-- MAGIC 1. Em alguns momentos, utilizaremos o SQL Editor. Deixe-o preparado em uma outra janela e selecione seu database.
+-- MAGIC
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_04.png">
 -- MAGIC
 -- MAGIC ***Caso não tenha feito ainda, carregue os dados conforme descrito no [Lab 01 - Importando os dados](https://github.com/Databricks-BR/genie_ai_bi/blob/main/01_LAB_importando_dados/README.md)***.
-
--- COMMAND ----------
-
-USE ${db}
 
 -- COMMAND ----------
 
@@ -34,7 +30,7 @@ USE ${db}
 -- MAGIC
 -- MAGIC 1. No menu principal (à esquerda), clique em `New` > `Genie space`
 -- MAGIC
--- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_01.png">
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_01.png"><br><br>
 -- MAGIC
 -- MAGIC 2. Configure sua Genie
 -- MAGIC     - Crie um nome para a sua Genie, por exemplo `<suas iniciais> Genie de Vendas`
@@ -50,87 +46,174 @@ USE ${db}
 
 -- COMMAND ----------
 
--- MAGIC %md ## Exercício 03.02 - Fazer perguntas ao AI/BI Genie
+-- MAGIC %md ## Exercício 03.02 - Fazendo perguntas ao AI/BI Genie
+-- MAGIC
+-- MAGIC Com nossa Genie preparada, podemos começar a fazer nossas análises!
+-- MAGIC
+-- MAGIC Basta usar o chat para fazer as perguntas abaixo:
 -- MAGIC
 -- MAGIC - Qual o faturamento em out/22?
 -- MAGIC - Agora, quebre por produto
 -- MAGIC - Mantenha somente os 10 produtos com maior faturamento
 -- MAGIC - Monte um gráfico de barras
-
--- COMMAND ----------
-
--- MAGIC %md ## Exercício 03.03 - Fazer perguntas avançadas
--- MAGIC
 -- MAGIC - Qual o total de produtos vendidos em genéricos?
 -- MAGIC - Qual o valor total vendido de ansiolíticos?
 -- MAGIC - Quais produtos tiveram uma proporção de vendas por estoque maior que 0.8 em Outubro de 2022?
-
--- COMMAND ----------
-
--- MAGIC %md ## Exercício 03.04 - Usando comentários
 -- MAGIC
--- MAGIC - Faça a pergunta:
--- MAGIC   - Qual o valor total de venda por loja? Exiba o nome da loja
--- MAGIC - Use a célula abaixo para adicionar um comentário na tabela `dim_loja`
--- MAGIC - Faça novamente a pergunta anterior
-
--- COMMAND ----------
-
-ALTER TABLE dim_loja ALTER COLUMN nlj COMMENT 'Nome da loja'
-
--- COMMAND ----------
-
--- MAGIC %md ## Exercício 03.05 - Usando chaves primárias
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_05.png"><br><br>
 -- MAGIC
--- MAGIC - Use a célula abaixo para adicionar as chaves primárias e estrangeiras nas tabelas `dim_loja` e `vendas`
--- MAGIC - Faça novamente a pergunta anterior
-
--- COMMAND ----------
-
-ALTER TABLE dim_loja ADD CONSTRAINT pk_dim_loja PRIMARY KEY (cod);
-ALTER TABLE vendas ADD CONSTRAINT fk_venda_dim_loja FOREIGN KEY (id_loja) REFERENCES dim_loja(cod);
-
--- COMMAND ----------
-
--- MAGIC %md ## Exercício 03.06 - Usando instruções
+-- MAGIC Notem que, mesmo com muito pouco contexto, a Genie já conseguiu:
+-- MAGIC - Inferir quais as tabelas e colunas relevantes para responder nossas perguntas
+-- MAGIC - Aplicar filtros e agregações
+-- MAGIC - Responder perguntas adicionais sobre uma resposta anterior
+-- MAGIC - Entender como utilizar jargões
+-- MAGIC - Combinar diferentes tabelas
+-- MAGIC - Calcular métricas derivadas
 -- MAGIC
--- MAGIC - Faça a pergunta:
--- MAGIC   - Calcule a quantidade de itens vendidos para prescrição
--- MAGIC - Adicione a instrução:
--- MAGIC   - `* para calcular indicadores sobre prescrição use categoria_regulatoria <> 'GENÉRICO'`
--- MAGIC - Faça novamente a pergunta anterior
+-- MAGIC Aproveitem para explorar e fazer perguntas adicionais!
 
 -- COMMAND ----------
 
--- MAGIC %md ## Exercício 03.07 - Usando exemplos de queries
+-- MAGIC %md ## Exercício 03.03 - Usando comentários
 -- MAGIC
--- MAGIC - Faça a pergunta:
--- MAGIC   - Calcule a quantidade de itens vendidos por janela móvel de 3 meses 
--- MAGIC - Adicione o exemplo de query abaixo:
--- MAGIC   - `SELECT window.end AS dt_venda, SUM(vl_venda) FROM vendas GROUP BY WINDOW(dt_venda, '90 days', '1 day') `
--- MAGIC - Faça novamente a pergunta anterior
-
--- COMMAND ----------
-
--- MAGIC %md ## Exercício 03.08 - Usando funções
+-- MAGIC Mesmo assim, podem ocorrer cenários onde precisaremos fornecer algum contexto adicional à Genie para obter respostas mais precisas.
 -- MAGIC
--- MAGIC - Faça a pergunta:
--- MAGIC   - Qual o lucro projetado do AAS?
--- MAGIC - Crie a função da célula abaixo
--- MAGIC - Adicione esta função a sua Genie
--- MAGIC - Faça novamente a pergunta anterior
+-- MAGIC Agora, vamos explorar algumas formas de auxiliar a Genie quando identificarmos alguma necessidade.
+-- MAGIC
+-- MAGIC A primeira delas é documentar nossas tabelas. Todos os comentários que adicionamos às tabelas são utilizados pela Genie para entender melhor o que é aquele dado.
+-- MAGIC
+-- MAGIC Vamos ver como funciona!
+-- MAGIC
+-- MAGIC 1. Faça a seguinte pergunta:
+-- MAGIC     - Qual o valor total de venda por loja? Exiba o nome da loja
+-- MAGIC
+-- MAGIC 2. Ops, parece que a Genie não conseguiu descobrir qual coluna contém o nome da loja. Use o SQL Editor para adicionar um comentário na coluna **nlj** da tabela **dim_loja** e explicar que ela contém essa informação
+-- MAGIC     - `ALTER TABLE dim_loja ALTER COLUMN nlj COMMENT 'Nome da loja'`
+-- MAGIC
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_06.png"><br><br>
+-- MAGIC
+-- MAGIC 3. Faça novamente a pergunta anterior<br><br>
+-- MAGIC
+-- MAGIC Percebam que dessa vez a Genie utilizou a coluna correta que contém o nome da loja.
+-- MAGIC
+-- MAGIC Documentar suas tabelas com comentários é sempre uma boa prática! Isso ajuda a compreensão, a descoberta e o reaproveitamento desses dados por outras pessoas. Além disso, vai acabar ajudando a melhorar as respostas da Genie.
+-- MAGIC
+-- MAGIC No entanto, nossa consulta ainda não retornou nenhum resultado. Vamos buscar uma solução!
 
 -- COMMAND ----------
 
-CREATE OR REPLACE FUNCTION calc_lucro(medicamento STRING)
-  RETURNS TABLE(nome_medicamento STRING, lucro_projetado DOUBLE)
-  COMMENT 'Use esta função para calcular o lucro projetado de um medicamento'
-  RETURN 
-    SELECT
-      m.nome_medicamento,
-      sum(case when m.categoria_regulatoria == 'GENÉRICO' then 1 else 0.5 end * v.vl_venda) / sum(v.qt_venda) as lucro_projetado
-    FROM vendas v
-    LEFT JOIN dim_medicamento m
-    ON v.id_produto = m.id_produto
-    WHERE m.nome_medicamento = calc_lucro.medicamento
-    GROUP BY ALL
+-- MAGIC %md ## Exercício 03.04 - Usando chaves primárias
+-- MAGIC
+-- MAGIC Aparentemente, a coluna **id_loja** da tabela **dim_loja** não é o melhor campo para fazer os cruzamentos com a tabela de vendas. Na verdade, a coluna correta é a **cod**!
+-- MAGIC
+-- MAGIC Vamos então adicionar chaves primárias e estrangeiras nessas tabelas para que a Genie não precise inferir como fazer esse cruzamento!
+-- MAGIC
+-- MAGIC 1. Use o SQL Editor para adicionar as chaves primárias e estrangeiras nas tabelas `dim_loja` e `vendas`
+-- MAGIC ```
+-- MAGIC ALTER TABLE dim_loja ADD CONSTRAINT pk_dim_loja PRIMARY KEY (cod);
+-- MAGIC ALTER TABLE vendas ADD CONSTRAINT fk_venda_dim_loja FOREIGN KEY (id_loja) REFERENCES dim_loja(cod);
+-- MAGIC ```
+-- MAGIC 2. Faça novamente a pergunta anterior na Genie
+-- MAGIC
+-- MAGIC Pronto! Com essa informação a Genie já consegue responder nossa pergunta corretamente!
+
+-- COMMAND ----------
+
+-- MAGIC %md ## Exercício 03.05 - Usando instruções
+-- MAGIC
+-- MAGIC Como vimos, a Genie utiliza toda a documentação das nossas tabelas para conseguir responder nossas perguntas. No entanto, por motivos de segurança, ela não tem acesso aos dados em si!
+-- MAGIC
+-- MAGIC Por isso, para complementar o conhecimento que a Genie já possui sobre nossas bases de dados, podemos também criar instruções!
+-- MAGIC
+-- MAGIC **Instruções** são nada mais que um conjunto de sentenças em linguagem natural que podem explicar para a Genie informações importantes como:
+-- MAGIC - Significado de abreviações e termos técnicos comumente utilizadas na sua empresa
+-- MAGIC - Formato do dado (por exemplo, se os registros estão em maiúsculas ou minúsculas)
+-- MAGIC - Tratamentos necessários para determinados campos
+-- MAGIC - Cálculos de métricas
+-- MAGIC
+-- MAGIC Vamos ver como funciona:
+-- MAGIC
+-- MAGIC 1. Faça a pergunta:
+-- MAGIC     - Calcule a quantidade de itens vendidos para prescrição
+-- MAGIC
+-- MAGIC 2. Me parece que o resultado não está correto! Na nossa base, o termo prescrição realmente não é mencionado nenhuma vez. Mas acontece que aqui consideramos como medicamentos de prescrição aqueles que não são genéricos. Por isso, adicione a seguinte instrução:
+-- MAGIC     - `* para calcular indicadores sobre prescrição use categoria_regulatoria <> 'GENÉRICO'`
+-- MAGIC
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_07.png">
+-- MAGIC
+-- MAGIC 3. Faça novamente a pergunta anterior
+-- MAGIC
+-- MAGIC Pronto! Agora a Genie já pode responder perguntas sobre prescrições também!
+
+-- COMMAND ----------
+
+-- MAGIC %md ## Exercício 03.06 - Usando exemplos de queries
+-- MAGIC
+-- MAGIC Em alguns casos, precisamos fazer cruzamentos e cálculos bastante complexos para conseguir responder às nossas perguntas e a Genie pode não entender como montar todo o racional necessário.
+-- MAGIC
+-- MAGIC Nesses casos, podemos fornecer exemplos de queries validadas e certificadas pelos times responsáveis. Este também é um mecanismo interessante para garantir a acurácia das respostas.
+-- MAGIC
+-- MAGIC Vamos ver como funciona:
+-- MAGIC
+-- MAGIC 1. Faça a pergunta:
+-- MAGIC     - Calcule a quantidade de itens vendidos por janela móvel de 3 meses 
+-- MAGIC
+-- MAGIC 2. Aqui a Genie já até fez uma soma em janela móvel, porém não ficou exatamente do jeito que nós gostaríamos. Então, adicione um exemplo de query seguindo os passos abaixo:
+-- MAGIC     - Clique em `Instructions`, no menu à esquerda
+-- MAGIC     - Clique em `Add Example Query`
+-- MAGIC     - Insira a pergunta anterior no campo superior
+-- MAGIC     - Insira a query abaixo no campo inferior
+-- MAGIC         - `SELECT window.end AS dt_venda, SUM(vl_venda) FROM vendas GROUP BY WINDOW(dt_venda, '90 days', '1 day')`
+-- MAGIC
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_08.png">
+-- MAGIC
+-- MAGIC 3. Faça novamente a pergunta anterior
+-- MAGIC
+-- MAGIC Notem que agora a Genie conseguiu responder corretamente a nossa pergunta!
+
+-- COMMAND ----------
+
+-- MAGIC %md ## Exercício 03.07 - Usando funções
+-- MAGIC
+-- MAGIC Outro recurso que podemos utilizar para ajudar a Genie com cálculos complexos são as funções!
+-- MAGIC
+-- MAGIC **Funções** permitem guardarmos e parametrizar lógicas complexas dentro do nosso catálogo para serem reutilizadas por outras pessoas e/ou outras consultas de forma simples – inclusive fora da Genie. 
+-- MAGIC
+-- MAGIC No nosso contexto, as funções também vão funcionar como ferramentas validades e certificadas pelos times responsáveis que a Genie pode decidir utilizar nas suas respostas.
+-- MAGIC
+-- MAGIC Vamos ver na prática:
+-- MAGIC
+-- MAGIC 1. Faça a pergunta:
+-- MAGIC     - Qual o lucro projetado do AAS?
+-- MAGIC
+-- MAGIC 2. Realmente, não temos informações suficientes na nossa base para responder à essa pergunta! Para isso, crie a função abaixo com a lógica do cálculo do lucro médio projetado de um produto:
+-- MAGIC ```
+-- MAGIC CREATE OR REPLACE FUNCTION calc_lucro(medicamento STRING)
+-- MAGIC   RETURNS TABLE(nome_medicamento STRING, lucro_projetado DOUBLE)
+-- MAGIC   COMMENT 'Use esta função para calcular o lucro projetado de um medicamento'
+-- MAGIC   RETURN 
+-- MAGIC     SELECT
+-- MAGIC       m.nome_medicamento,
+-- MAGIC       sum(case when m.categoria_regulatoria == 'GENÉRICO' then 1 else 0.5 end * v.vl_venda) / sum(v.qt_venda) as lucro_projetado
+-- MAGIC     FROM vendas v
+-- MAGIC     LEFT JOIN dim_medicamento m
+-- MAGIC     ON v.id_produto = m.id_produto
+-- MAGIC     WHERE m.nome_medicamento = calc_lucro.medicamento
+-- MAGIC     GROUP BY ALL
+-- MAGIC ```
+-- MAGIC
+-- MAGIC 3. Adicione esta função a sua Genie
+-- MAGIC
+-- MAGIC <img src="https://raw.githubusercontent.com/Databricks-BR/genie_ai_bi/main/images/genie_09.png">
+-- MAGIC
+-- MAGIC 4. Faça novamente a pergunta anterior
+-- MAGIC
+-- MAGIC Pronto! Com isso, conseguimos calcular o lucro médio do nosso produto!
+
+-- COMMAND ----------
+
+-- MAGIC %md # Parabéns!
+-- MAGIC
+-- MAGIC Você concluiu o laboratório do **AI/BI Genie**!
+-- MAGIC
+-- MAGIC Agora, você já sabe como utilizar a Genie para analisar seus dados usando somente linguagem natural – além dos principais recursos para refinar sua acurácia e conseguir responder as perguntas mais complexas!
