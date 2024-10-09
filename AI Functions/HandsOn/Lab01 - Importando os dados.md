@@ -8,6 +8,12 @@ Treinamento Hands-on na plataforma Databricks com foco nas funcionalidades de IA
 ## Objetivos do Exercício
 
 O objetivo desse laboratório é importar os dados que serão utilizados nos exercícios.
+
+Nosso conjunto consiste basicamente de quatro tabelas:
+- **Avaliações:** conteúdo das avaliações
+- **Clientes:** dados cadastrais e consumo dos clientes
+- **Produtos:** dados de registro e descrições dos produto
+- **FAQ:** perguntas e respostas frequentes em nosso website
 </br></br></br>
 
 ## Exercício 01.01 - Criação do database

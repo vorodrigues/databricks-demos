@@ -20,7 +20,8 @@ def merge_delta(microbatch, target):
     clustering_keys = None
 
   # Deduplica registros dentro do microbatch e mantém somente o mais recente
-  microbatch.orderBy(ts_key, ascending=False).dropDuplicates(merge_keys).createOrReplaceTempView("microbatch")
+  microbatch = microbatch.orderBy(ts_key, ascending=False).dropDuplicates(merge_keys)
+  microbatch.createOrReplaceTempView("microbatch")
   
   try:
     # Caso a tabela já exista, os dados serão atualizados com MERGE

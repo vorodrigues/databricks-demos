@@ -1,7 +1,7 @@
 -- Databricks notebook source
 -- MAGIC %md <img src="https://github.com/Databricks-BR/lab_genai/blob/main/img/header.png?raw=true" width=100%>
 -- MAGIC
--- MAGIC # Hands-On LAB 02 - Extraindo as informações
+-- MAGIC # Hands-On LAB 02 - Análise de sentimento, extração de entidades e geração de texto
 -- MAGIC
 -- MAGIC Treinamento Hands-on na plataforma Databricks com foco nas funcionalidades de IA Generativa.
 
@@ -29,15 +29,15 @@
 -- MAGIC
 -- MAGIC Agora, vamos acessar as avaliações de produto que carregamos no laboratório anterior.
 -- MAGIC
--- MAGIC Esse conjunto consiste basicamente de duas tabelas:
+-- MAGIC Neste laboratório iremos utilizar duas tabelas:
 -- MAGIC - **Avaliações**: dados não-estruturados com o conteúdo das avaliações
 -- MAGIC - **Clientes**: dados estruturados como o cadastro e consumo dos clientes
 -- MAGIC
--- MAGIC Agora, vamos visualizar estes dados
+-- MAGIC Agora, vamos visualizar estes dados!
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Selecionar o database que criamos anteriormente**
+-- MAGIC %md ### A. Selecionar o database que criamos anteriormente
 
 -- COMMAND ----------
 
@@ -45,7 +45,7 @@ USE academy.<seu_nome>
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Visualizar a tabela de avaliações**
+-- MAGIC %md ### B. Visualizar a tabela de avaliações
 
 -- COMMAND ----------
 
@@ -53,9 +53,10 @@ SELECT * FROM avaliacoes
 
 -- COMMAND ----------
 
--- MAGIC %md **C. Visualizar a tabela de clientes**
+-- MAGIC %md ### C. Visualizar a tabela de clientes
 
 -- COMMAND ----------
+
 
 SELECT * FROM clientes
 
@@ -158,7 +159,7 @@ SELECT * FROM clientes
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Análise de sentimento**
+-- MAGIC %md #### A. Análise de sentimento
 
 -- COMMAND ----------
 
@@ -166,7 +167,7 @@ SELECT *, ai_analyze_sentiment(avaliacao) AS sentimento FROM avaliacoes LIMIT 10
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Extração dos produtos mencionados**
+-- MAGIC %md #### B. Extração dos produtos mencionados
 
 -- COMMAND ----------
 
@@ -174,7 +175,7 @@ SELECT *, ai_extract(avaliacao, ARRAY('produto')) AS produtos FROM avaliacoes LI
 
 -- COMMAND ----------
 
--- MAGIC %md **C. Extração do motivo da insatisfação**
+-- MAGIC %md #### C. Extração do motivo da insatisfação
 
 -- COMMAND ----------
 
@@ -186,7 +187,7 @@ FROM avaliacoes LIMIT 10
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### 4. Simplificando o acesso à IA
+-- MAGIC ### 4. Analisando sentimento e extraindo entidades em escala
 -- MAGIC
 -- MAGIC Ter que especificar as instruções várias vezes acaba sendo trabalhoso, especialmente para Analistas de Dados que deveriam focar em analisar os resultados dessa extração.
 -- MAGIC
@@ -198,7 +199,7 @@ FROM avaliacoes LIMIT 10
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Criando uma função para extrair todas as informações**
+-- MAGIC %md #### A. Criando uma função para extrair todas as informações
 
 -- COMMAND ----------
 
@@ -231,7 +232,7 @@ RETURN FROM_JSON(
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Testando a análise das avaliações**
+-- MAGIC %md #### B. Testando a análise das avaliações
 
 -- COMMAND ----------
 
@@ -239,7 +240,7 @@ SELECT revisar_avaliacao('Comprei um tablet ASD e estou muito insatisfeito com a
 
 -- COMMAND ----------
 
--- MAGIC %md **C. Analisando todas as avaliações**
+-- MAGIC %md #### C. Analisando todas as avaliações
 
 -- COMMAND ----------
 

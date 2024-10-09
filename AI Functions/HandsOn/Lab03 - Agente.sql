@@ -69,7 +69,7 @@
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Selecionar o database que criamos anteriormente**
+-- MAGIC %md ### A. Selecionar o database que criamos anteriormente
 
 -- COMMAND ----------
 
@@ -77,11 +77,10 @@ USE academy.<seu_nome>
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Criar a função**
+-- MAGIC %md ### B. Criar a função
 
 -- COMMAND ----------
 
--- Cria a função
 CREATE OR REPLACE FUNCTION CONSULTAR_CLIENTE(id_cliente BIGINT)
 RETURNS TABLE (nome STRING, sobrenome STRING, num_pedidos INT)
 COMMENT 'Use esta função para consultar os dados de um cliente'
@@ -89,16 +88,15 @@ RETURN select nome, sobrenome, num_pedidos from clientes c where c.id_cliente = 
 
 -- COMMAND ----------
 
--- MAGIC %md **C. Testar a função**
+-- MAGIC %md ### C. Testar a função
 
 -- COMMAND ----------
 
--- Testa a função
 SELECT * FROM consultar_cliente(1)
 
 -- COMMAND ----------
 
--- MAGIC %md **D. Testar a função como ferramenta**
+-- MAGIC %md ### D. Testar a função como ferramenta
 -- MAGIC
 -- MAGIC 1. No **menu principal** à esquerda, clique em **`Playground`**
 -- MAGIC 2. Clique no **seletor de modelos** e selecione o modelo **`Meta Llama 3.1 70B Instruct`** (caso já não esteja selecionado)
@@ -120,7 +118,7 @@ SELECT * FROM consultar_cliente(1)
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Habilitar o Change Data Feed na tabela `FAQ`**
+-- MAGIC %md ### A. Habilitar o Change Data Feed na tabela `FAQ`
 -- MAGIC
 -- MAGIC Essa configuração permite com que o Vector Search leia os dados inseridos, excluídos ou alterados no FAQ de forma incremental.
 
@@ -130,7 +128,7 @@ ALTER TABLE faq SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Criar um índice no Vector Search**
+-- MAGIC %md ### B. Criar um índice no Vector Search
 -- MAGIC
 -- MAGIC 1. No **menu principal** à esquerda, clique em **`Catalog`**
 -- MAGIC 2. Busque a sua **tabela** `academy.<seu_nome>.faq`
@@ -150,7 +148,7 @@ ALTER TABLE faq SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 
 -- COMMAND ----------
 
--- MAGIC %md **C. Criar a função**
+-- MAGIC %md ### C. Criar a função
 
 -- COMMAND ----------
 
@@ -158,14 +156,14 @@ CREATE OR REPLACE FUNCTION consultar_faq(pergunta STRING)
 RETURNS TABLE(id LONG, pergunta STRING, resposta STRING, search_score DOUBLE)
 COMMENT 'Use esta função para consultar a base de conhecimento sobre prazos de entrega, pedidos de troca ou devolução, entre outras perguntas frequentes sobre o nosso marketplace'
 RETURN select * from vector_search(
-  index => 'vr_demo.aifunc.faq_index', 
+  index => 'academy.<seu_nome>.faq_index', 
   query => consultar_faq.pergunta,
   num_results => 1
 )
 
 -- COMMAND ----------
 
--- MAGIC %md **D. Testar a função**
+-- MAGIC %md ### D. Testar a função
 
 -- COMMAND ----------
 
@@ -177,7 +175,7 @@ SELECT * FROM consultar_faq('Como emitir a segunda via?')
 
 -- COMMAND ----------
 
--- MAGIC %md **E. Testar a função como ferramenta**
+-- MAGIC %md ### E. Testar a função como ferramenta
 -- MAGIC
 -- MAGIC 1. No **menu principal** à esquerda, clique em **`Playground`**
 -- MAGIC 2. Clique no **seletor de modelos** e selecione o modelo **`Meta Llama 3.1 70B Instruct`** (caso já não esteja selecionado)
@@ -199,7 +197,7 @@ SELECT * FROM consultar_faq('Como emitir a segunda via?')
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Habilitar o Change Data Feed na tabela `produtos`**
+-- MAGIC %md ### A. Habilitar o Change Data Feed na tabela `produtos`
 
 -- COMMAND ----------
 
@@ -207,7 +205,7 @@ ALTER TABLE produtos SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Criar um índice no Vector Search**
+-- MAGIC %md ### B. Criar um índice no Vector Search
 -- MAGIC
 -- MAGIC 1. No **menu principal** à esquerda, clique em **`Catalog`**
 -- MAGIC 2. Busque a sua **tabela** `academy.<seu_nome>.produtos`
@@ -227,7 +225,7 @@ ALTER TABLE produtos SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 
 -- COMMAND ----------
 
--- MAGIC %md **C. Criar a função**
+-- MAGIC %md ### C. Criar a função
 
 -- COMMAND ----------
 
@@ -235,7 +233,7 @@ CREATE OR REPLACE FUNCTION buscar_produtos_semelhantes(descricao STRING)
 RETURNS TABLE(id LONG, produto STRING, descricao STRING, search_score DOUBLE)
 COMMENT 'Esta função recebe a descrição de um produto, que é utilizada para buscar produtos semelhantes'
 RETURN SELECT * FROM vector_search(
-  index => 'vr_demo.aifunc.produtos_index',
+  index => 'academy.<seu_nome>.produtos_index',
   query => buscar_produtos_semelhantes.descricao,
   num_results => 10)
 WHERE search_score BETWEEN 0.003 AND 0.99
@@ -243,7 +241,7 @@ LIMIT 3
 
 -- COMMAND ----------
 
--- MAGIC %md **D. Testar a função**
+-- MAGIC %md ### D. Testar a função
 
 -- COMMAND ----------
 
@@ -251,7 +249,7 @@ SELECT * FROM buscar_produtos_semelhantes('O fone de ouvido DEF é um dispositiv
 
 -- COMMAND ----------
 
--- MAGIC %md **E. Testar a função como ferramenta**
+-- MAGIC %md ### E. Testar a função como ferramenta
 -- MAGIC
 -- MAGIC 1. No **menu principal** à esquerda, clique em **`Playground`**
 -- MAGIC 2. Clique no **seletor de modelos** e selecione o modelo **`Meta Llama 3.1 70B Instruct`** (caso já não esteja selecionado)
