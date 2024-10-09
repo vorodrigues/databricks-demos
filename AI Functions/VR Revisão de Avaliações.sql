@@ -113,7 +113,7 @@ SELECT * FROM clientes
 
 -- MAGIC %md ### Testando a extração
 -- MAGIC
--- MAGIC Para extrair as informações desejadas, vamos utilizar a função `AI_QUERY()`. Aqui só precisamos instruir ao modelo com qual informações nós gostaríamos que ele extraísse.
+-- MAGIC Para extrair as informações desejadas, vamos utilizar a função **`AI_QUERY()`**. Aqui só precisamos instruir ao modelo com qual informações nós gostaríamos que ele extraísse.
 -- MAGIC
 -- MAGIC Vamos ver como isso funciona!
 

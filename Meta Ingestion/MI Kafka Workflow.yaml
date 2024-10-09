@@ -1,0 +1,31 @@
+resources:
+  jobs:
+    MI_Kafka_Workflow:
+      name: MI Kafka Workflow
+      tasks:
+        - task_key: list_tables
+          notebook_task:
+            notebook_path: /Repos/victor.rodrigues@databricks.com/databricks-demos/Meta Ingestion/MI - List Tables # Alterar o caminho para o seu notebook
+            source: WORKSPACE
+          existing_cluster_id: 0709-132523-cnhxf2p6 # Alterar para seu cluster
+        - task_key: for_each_table
+          depends_on:
+            - task_key: list_tables
+          for_each_task:
+            inputs: "{{tasks.list_tables.values.tables}}"
+            concurrency: 2
+            task:
+              task_key: ingest
+              notebook_task:
+                notebook_path: /Repos/victor.rodrigues@databricks.com/databricks-demos/Meta Ingestion/MI - Ingest # Alterar o caminho para o seu notebook
+                base_parameters:
+                  table: "{{input}}"
+                source: WORKSPACE
+              existing_cluster_id: 0709-132523-cnhxf2p6 # Alterar para seu cluster
+      queue:
+        enabled: true
+      parameters:
+        - name: catalog
+          default: vr_demo # Alterar para o seu catálogo
+        - name: database
+          default: kafka # Alterar para o seu database
