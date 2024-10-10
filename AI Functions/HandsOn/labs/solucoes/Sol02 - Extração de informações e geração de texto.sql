@@ -271,7 +271,7 @@ SELECT *, resultado.* FROM (
 
 -- COMMAND ----------
 
--- MAGIC %md **A. Criando uma função para gerar um exemplo de resposta**
+-- MAGIC %md ### A. Criando uma função para gerar um exemplo de resposta
 
 -- COMMAND ----------
 
@@ -292,7 +292,7 @@ RETURN SELECT AI_QUERY(
 
 -- COMMAND ----------
 
--- MAGIC %md **B. Gerando respostas automatizadas para todas as avaliações negativas**
+-- MAGIC %md ### B. Gerando respostas automatizadas para todas as avaliações negativas
 
 -- COMMAND ----------
 

@@ -1,7 +1,7 @@
 -- Databricks notebook source
 -- MAGIC %md <img src="https://github.com/Databricks-BR/lab_genai/blob/main/img/header.png?raw=true" width=100%>
 -- MAGIC
--- MAGIC # Hands-On LAB 03 - Agentes
+-- MAGIC # Hands-On LAB 03 - Usando Agentes
 -- MAGIC
 -- MAGIC Treinamento Hands-on na plataforma Databricks com foco nas funcionalidades de IA Generativa.
 
@@ -84,7 +84,7 @@ USE academy.<seu_nome>
 CREATE OR REPLACE FUNCTION CONSULTAR_CLIENTE(id_cliente BIGINT)
 RETURNS TABLE (nome STRING, sobrenome STRING, num_pedidos INT)
 COMMENT 'Use esta função para consultar os dados de um cliente'
-RETURN select nome, sobrenome, num_pedidos from clientes c where c.id_cliente = consultar_cliente.id_cliente
+RETURN /* complete com uma query para consultar os dados do cliente */
 
 -- COMMAND ----------
 
@@ -92,7 +92,7 @@ RETURN select nome, sobrenome, num_pedidos from clientes c where c.id_cliente = 
 
 -- COMMAND ----------
 
-SELECT * FROM consultar_cliente(1)
+SELECT * FROM /* complete com a função para consultar os dados do cliente */
 
 -- COMMAND ----------
 
@@ -157,8 +157,8 @@ RETURNS TABLE(id LONG, pergunta STRING, resposta STRING, search_score DOUBLE)
 COMMENT 'Use esta função para consultar a base de conhecimento sobre prazos de entrega, pedidos de troca ou devolução, entre outras perguntas frequentes sobre o nosso marketplace'
 RETURN select * from vector_search(
   index => 'academy.<seu_nome>.faq_index', 
-  query => consultar_faq.pergunta,
-  num_results => 1
+  query => /* complete com a informação que precisamos buscar */,
+  num_results => /* complete com a quantidade adequada de resultados para nosso caso de uso */
 )
 
 -- COMMAND ----------
@@ -167,11 +167,7 @@ RETURN select * from vector_search(
 
 -- COMMAND ----------
 
-SELECT * FROM consultar_faq('Qual o prazo para devolução?')
-
--- COMMAND ----------
-
-SELECT * FROM consultar_faq('Como emitir a segunda via?')
+SELECT * FROM consultar_faq(/* complete com um texto para ser testado */)
 
 -- COMMAND ----------
 
@@ -232,12 +228,11 @@ ALTER TABLE produtos SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 CREATE OR REPLACE FUNCTION buscar_produtos_semelhantes(descricao STRING)
 RETURNS TABLE(id LONG, produto STRING, descricao STRING, search_score DOUBLE)
 COMMENT 'Esta função recebe a descrição de um produto, que é utilizada para buscar produtos semelhantes'
-RETURN SELECT * FROM vector_search(
-  index => 'academy.<seu_nome>.produtos_index',
-  query => buscar_produtos_semelhantes.descricao,
-  num_results => 10)
-WHERE search_score BETWEEN 0.003 AND 0.99
-LIMIT 3
+RETURN /* 
+        * complete com uma query para buscar produtos com descrições similares àquela fornecida 
+        * adicione filtros para eliminar resultados com search_score muito baixos (irrelevantes) ou muito altos (resultados exatos)
+        * bem como, limitar a quantidade de resultados gerados
+        */
 
 -- COMMAND ----------
 
@@ -245,7 +240,7 @@ LIMIT 3
 
 -- COMMAND ----------
 
-SELECT * FROM buscar_produtos_semelhantes('O fone de ouvido DEF é um dispositivo de áudio projetado para fornecer uma experiência de som imersiva e de alta qualidade. Com drivers de alta fidelidade e tecnologia de cancelamento de ruído, ele permite que você se perca na música ou nos detalhes de um podcast sem distrações. Além disso, seu design ergonômico garante confort durante o uso prolongado.')
+/* crie um teste */
 
 -- COMMAND ----------
 
