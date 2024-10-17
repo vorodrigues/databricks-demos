@@ -163,7 +163,7 @@ def merge_delta(incremental, target):
   
   try:
     # MERGE records into the target table using the specified join key
-    incremental._jdf.sparkSession().sql(f"""
+    incremental.sparkSession.sql(f"""
       MERGE INTO {target} t
       USING incremental i
       ON i.date=t.date AND i.window = t.window AND i.deviceId = t.deviceid
