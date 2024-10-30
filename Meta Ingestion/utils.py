@@ -89,6 +89,8 @@ def KafkaIngestion(target, spark):
     .select("eventId", "json.*")
   )
 
+  # if spark.sql(f"SHOW TABLES IN {catalog}.{database}_silver LIKE '{table}'").count() > 0:
+
   (silverDF.writeStream
     .outputMode("update")
     .option("checkpointLocation", f"{checkpoint_location}/{catalog}/{database}_silver/{table}")

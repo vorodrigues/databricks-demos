@@ -74,14 +74,58 @@ delete_fss(catalog, db, ["user_features", "destination_features", "destination_l
 from databricks.feature_engineering import FeatureEngineeringClient
 fe = FeatureEngineeringClient()
 
-# Reuse the same features as the previous example 02_Feature_store_advanced
-# For more details these functions are available under ./_resources/00-init-expert
+# COMMAND ----------
+
+def create_user_features(travel_purchase_df):
+    """
+    Computes the user_features feature group.
+    """
+    travel_purchase_df = travel_purchase_df.withColumn('ts_l', F.col("ts").cast("long"))
+    travel_purchase_df = (
+        # Sum total purchased for 7 days
+        travel_purchase_df.withColumn("lookedup_price_7d_rolling_sum",
+            F.sum("price").over(w.Window.partitionBy("user_id").orderBy(F.col("ts_l")).rangeBetween(start=-(7 * 86400), end=0))
+        )
+        # counting number of purchases per week
+        .withColumn("lookups_7d_rolling_sum", 
+            F.count("*").over(w.Window.partitionBy("user_id").orderBy(F.col("ts_l")).rangeBetween(start=-(7 * 86400), end=0))
+        )
+        # total price 7d / total purchases for 7 d 
+        .withColumn("mean_price_7d",  F.col("lookedup_price_7d_rolling_sum") / F.col("lookups_7d_rolling_sum"))
+         # converting True / False into 1/0
+        .withColumn("tickets_purchased", F.col("purchased").cast('int'))
+        # how many purchases for the past 6m
+        .withColumn("last_6m_purchases", 
+            F.sum("tickets_purchased").over(w.Window.partitionBy("user_id").orderBy(F.col("ts_l")).rangeBetween(start=-(6 * 30 * 86400), end=0))
+        )
+        .select("user_id", "ts", "mean_price_7d", "last_6m_purchases", "user_longitude", "user_latitude")
+    )
+    return travel_purchase_df
+
 user_features_df = create_user_features(spark.table('travel_purchase'))
 fe.create_table(name=f"{catalog}.{db}.user_features",
                 primary_keys=["user_id", "ts"], 
                 timestamp_keys="ts", 
                 df=user_features_df, 
                 description="User Features")
+
+# COMMAND ----------
+
+def destination_features_fn(travel_purchase_df):
+    """
+    Computes the destination_features feature group.
+    """
+    return (
+        travel_purchase_df
+          .withColumn("clicked", F.col("clicked").cast("int"))
+          .withColumn("sum_clicks_7d", 
+            F.sum("clicked").over(w.Window.partitionBy("destination_id").orderBy(F.col("ts").cast("long")).rangeBetween(start=-(7 * 86400), end=0))
+          )
+          .withColumn("sum_impressions_7d", 
+            F.count("*").over(w.Window.partitionBy("destination_id").orderBy(F.col("ts").cast("long")).rangeBetween(start=-(7 * 86400), end=0))
+          )
+          .select("destination_id", "ts", "sum_clicks_7d", "sum_impressions_7d")
+    )  
 
 destination_features_df = destination_features_fn(spark.table('travel_purchase'))
 fe.create_table(name=f"{catalog}.{db}.destination_features", 
@@ -90,8 +134,8 @@ fe.create_table(name=f"{catalog}.{db}.destination_features",
                 df=destination_features_df, 
                 description="Destination Popularity Features")
 
+# COMMAND ----------
 
-#Add the destination location dataset
 destination_location = spark.table("destination_location")
 fe.create_table(name=f"{catalog}.{db}.destination_location_features", 
                 primary_keys="destination_id", 
@@ -104,10 +148,6 @@ fe.create_table(name=f"{catalog}.{db}.destination_location_features",
 # MAGIC ## Compute streaming features
 # MAGIC
 # MAGIC Availability of the destination can hugely affect the prices. Availability can change frequently especially around the holidays or long weekends during busy season. This data has a freshness requirement of every few minutes, so we use Spark structured streaming to ensure data is fresh when doing model prediction. 
-
-# COMMAND ----------
-
-# MAGIC %md <img src="https://docs.databricks.com/_static/images/machine-learning/feature-store/realtime/streaming.png"/>
 
 # COMMAND ----------
 
@@ -284,7 +324,7 @@ display(training_features_df)
 
 # COMMAND ----------
 
-# MAGIC %md ### Prepare data
+# MAGIC %md ### Split train and test datasets
 
 # COMMAND ----------
 
@@ -301,6 +341,26 @@ y_train = train['purchased']
 # separate features and labels
 X_test_raw = test.drop('purchased', axis=1)
 y_test = test['purchased']
+
+# COMMAND ----------
+
+# MAGIC %md ### Exploratory Data Analysis
+
+# COMMAND ----------
+
+# MAGIC %pip install ydata_profiling --upgrade
+
+# COMMAND ----------
+
+from ydata_profiling import ProfileReport
+df_profile = ProfileReport(train, minimal=True, title="Profiling Report", progress_bar=False, infer_dtypes=False)
+profile_html = df_profile.to_html()
+
+displayHTML(profile_html)
+
+# COMMAND ----------
+
+# MAGIC %md ### Prepare data
 
 # COMMAND ----------
 
