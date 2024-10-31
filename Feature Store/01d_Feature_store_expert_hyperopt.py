@@ -68,6 +68,11 @@
 
 # COMMAND ----------
 
+travel_purchase_df = spark.table("vr_demo.feature_store.travel_purchase")
+display(travel_purchase_df)
+
+# COMMAND ----------
+
 #Delete potential existing tables to reset all the demo
 delete_fss(catalog, db, ["user_features", "destination_features", "destination_location_features", "availability_features"])
 
