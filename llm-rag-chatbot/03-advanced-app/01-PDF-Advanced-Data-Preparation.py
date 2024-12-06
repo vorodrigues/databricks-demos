@@ -24,19 +24,12 @@
 # MAGIC Lakehouse AI not only provides state of the art solutions to accelerate your AI and LLM projects, but also to accelerate data ingestion and preparation at scale, including unstructured data like PDFs.
 # MAGIC
 # MAGIC <!-- Collect usage data (view). Remove it to disable collection or disable tracker during installation. View README for more details.  -->
-# MAGIC <img width="1px" src="https://ppxrzfxige.execute-api.us-west-2.amazonaws.com/v1/analytics?category=data-science&org_id=1444828305810485&notebook=%2F02-advanced%2F01-PDF-Advanced-Data-Preparation&demo_name=llm-rag-chatbot&event=VIEW&path=%2F_dbdemos%2Fdata-science%2Fllm-rag-chatbot%2F02-advanced%2F01-PDF-Advanced-Data-Preparation&version=1">
-
-# COMMAND ----------
-
-# MAGIC %md 
-# MAGIC ### A cluster has been created for this demo
-# MAGIC To run this demo, just select the cluster `dbdemos-llm-rag-chatbot-victor_rodrigues` from the dropdown menu ([open cluster configuration](https://e2-demo-field-eng.cloud.databricks.com/#setting/clusters/0522-131636-mnxs01k4/configuration)). <br />
-# MAGIC *Note: If the cluster was deleted after 30 days, you can re-create it with `dbdemos.create_cluster('llm-rag-chatbot')` or re-install the demo: `dbdemos.install('llm-rag-chatbot')`*
+# MAGIC <img width="1px" src="https://ppxrzfxige.execute-api.us-west-2.amazonaws.com/v1/analytics?category=data-science&org_id=1444828305810485&notebook=%2F03-advanced-app%2F01-PDF-Advanced-Data-Preparation&demo_name=llm-rag-chatbot&event=VIEW&path=%2F_dbdemos%2Fdata-science%2Fllm-rag-chatbot%2F03-advanced-app%2F01-PDF-Advanced-Data-Preparation&version=1">
 
 # COMMAND ----------
 
 # DBTITLE 1,Install required external libraries 
-# MAGIC %pip install transformers==4.30.2 "unstructured[pdf,docx]==0.10.30" langchain==0.1.5 llama-index==0.9.3 databricks-vectorsearch==0.22 pydantic==1.10.9 mlflow==2.10.1
+# MAGIC %pip install --quiet -U transformers==4.41.1 pypdf==4.1.0 langchain-text-splitters==0.2.0 databricks-vectorsearch mlflow tiktoken==0.7.0 torch==2.3.0 llama-index==0.10.43
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -132,8 +125,18 @@ df = (spark.readStream
 # COMMAND ----------
 
 # DBTITLE 1,To extract our PDF,  we'll need to setup libraries in our nodes
-# For production use-case, install the libraries at your cluster level with an init script instead. 
-install_ocr_on_nodes()
+import warnings
+from pypdf import PdfReader
+
+def parse_bytes_pypdf(raw_doc_contents_bytes: bytes):
+    try:
+        pdf = io.BytesIO(raw_doc_contents_bytes)
+        reader = PdfReader(pdf)
+        parsed_content = [page_content.extract_text() for page_content in reader.pages]
+        return "\n".join(parsed_content)
+    except Exception as e:
+        warnings.warn(f"Exception {e} has been thrown during parsing")
+        return None
 
 # COMMAND ----------
 
@@ -142,26 +145,11 @@ install_ocr_on_nodes()
 
 # COMMAND ----------
 
-# DBTITLE 1,Transform pdf as text
-from unstructured.partition.auto import partition
-import re
-
-def extract_doc_text(x : bytes) -> str:
-  # Read files and extract the values with unstructured
-  sections = partition(file=io.BytesIO(x))
-  def clean_section(txt):
-    txt = re.sub(r'\n', '', txt)
-    return re.sub(r' ?\.', '.', txt)
-  # Default split is by section of document, concatenate them all together because we want to split by sentence instead.
-  return "\n".join([clean_section(s.text) for s in sections]) 
-
-# COMMAND ----------
-
 # DBTITLE 1,Trying our text extraction function with a single pdf file
 import io
 import re
 with requests.get('https://github.com/databricks-demos/dbdemos-dataset/blob/main/llm/databricks-pdf-documentation/Databricks-Customer-360-ebook-Final.pdf?raw=true') as pdf:
-  doc = extract_doc_text(pdf.content)  
+  doc = parse_bytes_pypdf(pdf.content)  
   print(doc)
 
 # COMMAND ----------
@@ -173,8 +161,8 @@ with requests.get('https://github.com/databricks-demos/dbdemos-dataset/blob/main
 
 # COMMAND ----------
 
-from llama_index.langchain_helpers.text_splitter import SentenceSplitter
-from llama_index import Document, set_global_tokenizer
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core import Document, set_global_tokenizer
 from transformers import AutoTokenizer
 from typing import Iterator
 
@@ -183,14 +171,16 @@ spark.conf.set("spark.sql.execution.arrow.maxRecordsPerBatch", 10)
 
 @pandas_udf("array<string>")
 def read_as_chunk(batch_iter: Iterator[pd.Series]) -> Iterator[pd.Series]:
-    #set llama2 as tokenizer to match our model size (will stay below BGE 1024 limit)
+    #set llama2 as tokenizer to match our model size (will stay below gte 1024 limit)
     set_global_tokenizer(
       AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     )
     #Sentence splitter from llama_index to split on sentences
-    splitter = SentenceSplitter(chunk_size=500, chunk_overlap=50)
+    splitter = SentenceSplitter(chunk_size=500, chunk_overlap=10)
     def extract_and_split(b):
-      txt = extract_doc_text(b)
+      txt = parse_bytes_pypdf(b)
+      if txt is None:
+        return []
       nodes = splitter.get_nodes_from_documents([Document(text=txt)])
       return [n.text for n in nodes]
 
@@ -217,7 +207,7 @@ def read_as_chunk(batch_iter: Iterator[pd.Series]) -> Iterator[pd.Series]:
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC ## Introducing Databricks BGE Embeddings Foundation Model endpoints
+# MAGIC ## Introducing Databricks GTE Embeddings Foundation Model endpoints
 # MAGIC
 # MAGIC <img src="https://github.com/databricks-demos/dbdemos-resources/blob/main/images/product/chatbot-rag/rag-pdf-self-managed-4.png?raw=true" style="float: right; width: 600px; margin-left: 10px">
 # MAGIC
@@ -230,20 +220,20 @@ def read_as_chunk(batch_iter: Iterator[pd.Series]) -> Iterator[pd.Series]:
 # MAGIC
 # MAGIC Open the [Model Serving Endpoint page](/ml/endpoints) to explore and try the foundation models.
 # MAGIC
-# MAGIC For this demo, we will use the foundation model `BGE` (embeddings) and `llama2-70B` (chat). <br/><br/>
+# MAGIC For this demo, we will use the foundation model `GTE` (embeddings) and `DBRX` (chat). <br/><br/>
 # MAGIC
 # MAGIC <img src="https://github.com/databricks-demos/dbdemos-resources/blob/main/images/product/chatbot-rag/databricks-foundation-models.png?raw=true" width="600px" >
 
 # COMMAND ----------
 
-# DBTITLE 1,Using Databricks Foundation model BGE as embedding endpoint
+# DBTITLE 1,Using Databricks Foundation model GTE as embedding endpoint
 from mlflow.deployments import get_deploy_client
 
-# bge-large-en Foundation models are available using the /serving-endpoints/databricks-bge-large-en/invocations api. 
+# gte-large-en Foundation models are available using the /serving-endpoints/databricks-gtegte-large-en/invocations api. 
 deploy_client = get_deploy_client("databricks")
 
 ## NOTE: if you change your embedding model here, make sure you change it in the query step too
-embeddings = deploy_client.predict(endpoint="databricks-bge-large-en", inputs={"input": ["What is Apache Spark?"]})
+embeddings = deploy_client.predict(endpoint="databricks-gte-large-en", inputs={"input": ["What is Apache Spark?"]})
 pprint(embeddings)
 
 # COMMAND ----------
@@ -275,7 +265,7 @@ def get_embedding(contents: pd.Series) -> pd.Series:
     deploy_client = mlflow.deployments.get_deploy_client("databricks")
     def get_embeddings(batch):
         #Note: this will fail if an exception is thrown during embedding creation (add try/except if needed) 
-        response = deploy_client.predict(endpoint="databricks-bge-large-en", inputs={"input": batch})
+        response = deploy_client.predict(endpoint="databricks-gte-large-en", inputs={"input": batch})
         return [e['embedding'] for e in response.data]
 
     # Splitting the contents into batches of 150 items each, since the embedding model takes at most 150 inputs per request.
@@ -367,7 +357,7 @@ if not index_exists(vsc, VECTOR_SEARCH_ENDPOINT_NAME, vs_index_fullname):
     source_table_name=source_table_fullname,
     pipeline_type="TRIGGERED", #Sync needs to be manually triggered
     primary_key="id",
-    embedding_dimension=1024, #Match your model embedding size (bge)
+    embedding_dimension=1024, #Match your model embedding size (gte)
     embedding_vector_column="embedding"
   )
   #Let's wait for the index to be ready and all our embeddings to be created and indexed
@@ -394,7 +384,7 @@ else:
 
 question = "How can I track billing usage on my workspaces?"
 
-response = deploy_client.predict(endpoint="databricks-bge-large-en", inputs={"input": [question]})
+response = deploy_client.predict(endpoint="databricks-gte-large-en", inputs={"input": [question]})
 embeddings = [e['embedding'] for e in response.data]
 
 results = vsc.get_index(VECTOR_SEARCH_ENDPOINT_NAME, vs_index_fullname).similarity_search(

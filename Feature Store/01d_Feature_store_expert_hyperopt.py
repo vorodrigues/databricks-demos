@@ -68,11 +68,6 @@
 
 # COMMAND ----------
 
-travel_purchase_df = spark.table("vr_demo.feature_store.travel_purchase")
-display(travel_purchase_df)
-
-# COMMAND ----------
-
 #Delete potential existing tables to reset all the demo
 delete_fss(catalog, db, ["user_features", "destination_features", "destination_location_features", "availability_features"])
 
@@ -643,7 +638,7 @@ production_alias = "production"
 
 # COMMAND ----------
 
-scored_df = fe.score_batch(model_uri=f"models:/{model_full_name}@{production_alias}", df=test_df, result_type="string")
+scored_df = fe.score_batch(model_uri=f"models:/{model_full_name}@{production_alias}", df=test_df, result_type="string", env_manager='conda')
 display(scored_df)
 
 # COMMAND ----------

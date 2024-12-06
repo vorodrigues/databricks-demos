@@ -9,19 +9,16 @@
 
 # COMMAND ----------
 
-VECTOR_SEARCH_ENDPOINT_NAME = 'one-env-shared-endpoint-3'
+VECTOR_SEARCH_ENDPOINT_NAME="one-env-shared-endpoint-16"
 
 DATABRICKS_SITEMAP_URL = "https://docs.databricks.com/en/doc-sitemap.xml"
 
 catalog = "vr_demo"
 
-dbName = db = "chatbot3"
-
-token_scope = "dbdemos"
-token_secret = "vr_sp_token"
-
-# Opcional
-sp = "8ec0ae03-d63d-4ee4-94c0-fd2102e17188"
+#email = spark.sql('select current_user() as user').collect()[0]['user']
+#username = email.split('@')[0].replace('.', '_')
+#dbName = db = f"dbdemos_rag_{username}"
+dbName = db = "chatbot4"
 
 # COMMAND ----------
 

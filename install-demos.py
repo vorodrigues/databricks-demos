@@ -6,9 +6,9 @@
 import dbdemos
 
 dbdemos.install(
-  demo_name='lakehouse-fsi-fraud',
+  demo_name='llm-rag-chatbot',
   path='./', 
   catalog='vr_demo', 
-  schema='fraud',
+  schema='chatbot4',
   overwrite=True
 )
