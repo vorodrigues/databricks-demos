@@ -6,9 +6,9 @@
 import dbdemos
 
 dbdemos.install(
-  demo_name='llm-rag-chatbot',
+  demo_name='llm-fine-tuning',
   path='./', 
   catalog='vr_demo', 
-  schema='chatbot4',
+  schema='fine_tuning',
   overwrite=True
 )
