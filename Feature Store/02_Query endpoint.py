@@ -1,6 +1,18 @@
 # Databricks notebook source
+# MAGIC %md # Travel Expert Endpoint Evaluation
+
+# COMMAND ----------
+
+# MAGIC %md ## Setup
+
+# COMMAND ----------
+
 # MAGIC %pip install databricks-feature-engineering==0.2.0 databricks-sdk==0.20.0
 # MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
+
+# MAGIC %md ## Load sample data
 
 # COMMAND ----------
 
@@ -8,6 +20,10 @@ df = (spark.table('vr_demo.feature_store.travel_purchase')
     .select('ts', 'destination_id', 'user_id', 'user_latitude', 'user_longitude', 'booking_date')
     .limit(10))
 lookup_keys = df.toPandas().astype({'ts': 'str', 'booking_date': 'str'}).to_dict(orient="records")
+
+# COMMAND ----------
+
+# MAGIC %md ## Query the endpoint
 
 # COMMAND ----------
 

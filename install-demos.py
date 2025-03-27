@@ -6,9 +6,9 @@
 import dbdemos
 
 dbdemos.install(
-  demo_name='llm-fine-tuning',
+  demo_name='lakehouse-iot-platform',
   path='./', 
   catalog='vr_demo', 
-  schema='fine_tuning',
+  schema='iot',
   overwrite=True
 )
