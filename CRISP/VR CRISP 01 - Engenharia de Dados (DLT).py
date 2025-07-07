@@ -11,12 +11,6 @@
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC <img style="float:center" src="https://github.com/juliandrof/pics/blob/main/dlt2.jpeg?raw=true" width="70%"/>
-# MAGIC
-
-# COMMAND ----------
-
-# MAGIC %md-sandbox
 # MAGIC ## Simplifique o ETL com o Delta Live Table
 # MAGIC
 # MAGIC O DLT torna a Engenharia de Dados acessível para todos. Basta declarar suas transformações em SQL ou Python, e o DLT lidará com a complexidade da Engenharia de Dados para você.
@@ -131,11 +125,9 @@ def sales_silver():
 
 # Enriquece as transações com os dados estruturados de produto e loja
 @dlt.table(
+  # cluster_by=["product_id","store_id","date_key"],
+  cluster_by=["AUTO"],
   comment="A **CRISP** se conecta aos dados de [mais de 40 varejistas e distribuidores dos EUA](https://www.gocrisp.com/catalog/tag/inbound-connectors) e provê informações de *supply chain*, vendas, dentre outras. Nesta tabela, temos os dados harmonizados de vendas no varejo por produto, vendedor e data.",
-  table_properties={
-    "pipelines.autoOptimize.managed": "true",
-    "pipelines.autoOptimize.zOrderCols": "product_id,store_id,date_key"
-  },
   schema="""
     sales_id LONG COMMENT 'Chave primária. Identificador da venda gerado pela CRISP',
     product_id LONG COMMENT 'Identificador do produto gerado pela CRISP',

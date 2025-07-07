@@ -5,12 +5,16 @@
 kafka_bootstrap_servers_tls = dbutils.secrets.get("oetrta", "kafka-bootstrap-servers-tls")
 #kafka_bootstrap_servers_plaintext = dbutils.secrets.get("oetrta", "oetrta-kafka-servers-plain")
 # Full username, e.g. "aaron.binns@databricks.com"
-username = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
+username = 'victor.rodrigues@databricks.com'
 # Short form of username, suitable for use as part of a topic name.
 user = username.split("@")[0].replace(".","_")
 # DBFS directory for this project, we will store the Kafka checkpoint in there
 project_dir = f"/home/{username}/kafka_demo"
 checkpoint_location = f"{project_dir}/checkpoints/kafka"
+
+# COMMAND ----------
+
+checkpoint_location
 
 # COMMAND ----------
 
@@ -75,3 +79,32 @@ dbutils.fs.rm(checkpoint_location, True)
    .trigger(availableNow=True)
    .start()
 )
+
+# COMMAND ----------
+
+# MAGIC %md # TESTE
+
+# COMMAND ----------
+
+# project_dir = "/home/victor.rodrigues@databricks.com/meta_ingestion"
+# checkpoint_location = f"{project_dir}/checkpoints"
+# dbutils.fs.rm(checkpoint_location, True)
+
+# COMMAND ----------
+
+# from utils import *
+
+# COMMAND ----------
+
+# catalog = 'vr_demo'
+# database = 'kafka'
+# table = 'table1'
+
+# COMMAND ----------
+
+# conf = spark.sql(f'select * from vr_demo.kafka.control where catalog = "{catalog}" and database = "{database}" and table = "{table}"').collect()[0]
+# print(conf)
+
+# COMMAND ----------
+
+# KafkaIngestion(conf, spark)
