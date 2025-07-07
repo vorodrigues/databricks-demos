@@ -1,0 +1,10 @@
+command: [
+  "python", 
+  "app.py"
+]
+
+env:
+  - name: "SERVING_ENDPOINT"
+    valueFrom: "serving_endpoint"
+  - name: "GRADIO_ROOT_PATH"
+    value: "https://vr-object-detection-1444828305810485.aws.databricksapps.com/"
