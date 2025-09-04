@@ -4,7 +4,7 @@ import dlt
 @dlt.table(comment="Dados de transações de vendas crus ingeridos incrementalmente a partir do storage da landing zone")
 def sales_bronze():
   return (spark.readStream.format("cloudFiles")
-    .option("cloudFiles.format", "json")
+    .option("cloudFiles.format", "csv")
     .option("cloudFiles.inferColumnTypes", "true")
     .load("s3://one-env/vr/crisp/sales"))
   
