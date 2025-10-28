@@ -684,7 +684,7 @@ print("Accuracy: ", accuracy_score(pd_scoring["purchased"], pd_scoring["predicti
 # COMMAND ----------
 
 # Get information about an existing online store
-online_store = fe.get_online_store(name="fe_shared_demo")
+online_store = fe.get_online_store(name="fe-shared-demo")
 if online_store:
     print(f"Store: {online_store.name}, State: {online_store.state}, Capacity: {online_store.capacity}")
 
